@@ -1,56 +1,104 @@
-project_setup_repo/
-│
-├── setup_project.sh               # The ksh-compatible project setup script
-├── README.md                     # Documentation for the script and usage
-└── LICENSE                       # (Optional) License file if you want to share publicly
+# Project Setup & Cleanup Scripts
 
-# Project Setup Script
+[![Shell Script](https://img.shields.io/badge/shell-ksh-blue.svg)](https://www.kornshell.com/)  
+[![Python 3](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/)  
+[![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen.svg)](https://github.com/karthikingithub/project_setup_repo)  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)  
+[![Issues](https://img.shields.io/github/issues/karthikingithub/project_setup_repo.svg)](https://github.com/karthikingithub/project_setup_repo/issues)  
+[![Stars](https://img.shields.io/github/stars/karthikingithub/project_setup_repo.svg?style=social)](https://github.com/karthikingithub/project_setup_repo/stargazers)
 
-This repository contains a Korn shell (`ksh`) compatible script `setup_project.sh` that automates setting up a standard, modular project folder structure with:
+---
 
-- Essential directories for airflow, db, src, config, scripts, data, and more
-- Creation of `README.txt` files in each folder describing its purpose
-- Initialization of key project root files (`README.md`, `requirements.txt`, `.gitignore`, `.env.example`, `CHANGELOG.md`)
-- Setup of Python virtual environment inside `venv` folder
-- Automatic update of `.gitignore` to exclude `venv/`
-- Robust logging to timestamped log files saved under `/media/karthik/WD-HDD/Learning/labs/log/setup_project/`
-- Terminal output with color-coded success, info, and error messages
-- Idempotent operations safe to run multiple times with permission fixes (755) on directories
+## Overview
+
+This repository contains Korn shell (`ksh`) scripts to efficiently setup and cleanup standardized project environments suitable for data engineering, AI workflows, or general software projects.
+
+The scripts provide:
+
+- Modular creation of a comprehensive project folder structure with informative `README.txt` files in each folder.
+- Initialization of essential root files like `README.md`, `requirements.txt`, `.gitignore`, `.env.example`, and `CHANGELOG.md`.
+- Python virtual environment (`venv`) setup and integration with `.gitignore`.
+- Detailed logging mechanism with timestamped log files, color-coded console outputs, and robust error handling.
+- Safe re-execution with permission management.
+- User confirmation prior to destructive cleanup operations.
+
+---
+
+## Scripts
+
+### 1. `setup_project.sh`
+
+Sets up a new project environment with all required directories, placeholder files, and Python virtual environment. Logs the entire process in the configured log directory.
+
+### 2. `cleanup_project.sh`
+
+Recursively deletes the entire project directory created by `setup_project.sh`, including the virtual environment and all contents. Requests explicit user confirmation before proceeding. Log files record every step and any errors.
+
+---
 
 ## Usage
 
-1. Make the script executable:
+### Setup a new project
 
 chmod +x setup_project.sh
-
-2. Run the script with root target path and project name arguments:
-
-./setup_project.sh /desired/target/path your_project_name
+./setup_project.sh /your/target/path your_project_name
 
 
-Example:
-
-./setup_project.sh /media/karthik/WD-HDD/Learning/labs test_project1
+### Cleanup an existing project
 
 
-## Requirements
+chmod +x cleanup_project.sh
+./cleanup_project.sh /your/target/path your_project_name
 
-- Korn shell (`ksh`) installed and available in your environment
-- Python 3 installed with `venv` module available
-- Write permissions on the target directory and log base directory
+
+You will be prompted to confirm deletion by typing `yes`.
+
+---
 
 ## Logging
 
-Logs are stored at:
-
-/media/karthik/WD-HDD/Learning/labs/log/setup_project/setup_project_<project_name>_<timestamp>.log
-
-#replace the log path as needed
+All script runs generate detailed logs stored here:
 
 
-Check these logs for details on the setup process including successes, info, and errors.
+/media/karthik/WD-HDD/Learning/labs/log/<script_name>/
 
-## Customization
 
-You can modify the directories or README descriptions inside `setup_project.sh` function `create_directories()` as needed to fit your project requirements.
+**Example log files:**
+
+- `setup_project_test_project1_20251015_113000.log`
+- `cleanup_project_test_project1_cleanup_20251015_115000.log`
+
+Logs include timestamps, operation details, success info, and error diagnostics.
+
+---
+
+## Requirements
+
+- Korn shell (`ksh`) installed and available
+- Python 3 with `venv` module (for setup script)
+- Write / delete permissions on the target and logs directories
+
+---
+
+## Repository Topics
+
+You can classify this repository on GitHub by adding these topics:
+
+
+shell-script ksh bash setup-script cleanup-script python-project data-engineering automation infrastructure boilerplate
+
+
+---
+
+## Contact
+
+Maintained by **Karthik KN.**
+
+For questions or contributions, please open issues or pull requests.
+
+---
+
+Thank you for using these scripts!  
+Feel free to customize the directory structure and logging paths inside the scripts as per your organizational needs.
+
 
