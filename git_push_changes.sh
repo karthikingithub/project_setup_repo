@@ -20,15 +20,15 @@ load_config() {
     . "$HOME/config.env"
 
     if [ -z "$LOG_BASE_DIR" ]; then
-        color_red "ERROR: LOG_BASE_DIR not set in config : $HOME/config.env"
+        color_red "ERROR: LOG_BASE_DIR not set in config."
         exit 1
     fi
     if [ -z "$REPO_OWNER" ]; then
-        color_red "ERROR: REPO_OWNER not set in config.: $HOME/config.env"
+        color_red "ERROR: REPO_OWNER not set in config."
         exit 1
     fi
     if [ -z "$GITHUB_TOKEN" ]; then
-        color_red "ERROR: GITHUB_TOKEN not set in config.: $HOME/config.env"
+        color_red "ERROR: GITHUB_TOKEN not set in config."
         exit 1
     fi
 }
@@ -48,9 +48,7 @@ log_message() {
     fi
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     print "$timestamp [$level] $msg" >> "$LOG_FILE"
-    if [ "$silent" -eq 1 ]; then
-        return
-    fi
+    [ "$silent" -eq 1 ] && return
     case "$level" in
         SUCCESS) color_green "$msg" ;;
         ERROR)   color_red "$msg" ;;
@@ -75,7 +73,7 @@ print_git_status() {
 
 select_changes_to_add() {
     typeset -a files_to_add
-    cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; exit 1; }
+    cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; return 1; }
     print_git_status
 
     git status --porcelain -z > .git_temp_status
@@ -83,7 +81,7 @@ select_changes_to_add() {
         log_message INFO "No unstaged or untracked changes"
         color_cyan "No changes to commit or push."
         rm -f .git_temp_status
-        exit 0
+        return 1
     fi
 
     color_cyan "---------- FILES FOR ADD ----------"
@@ -112,7 +110,7 @@ select_changes_to_add() {
     if [ ${#files_to_add[@]} -eq 0 ]; then
         log_message INFO "No files selected."
         color_cyan "No files chosen for commit."
-        exit 0
+        return 1
     fi
 
     git add "${files_to_add[@]}"
@@ -122,10 +120,11 @@ select_changes_to_add() {
     else
         log_message ERROR "git add failed."
         color_red "git add failed. Exiting."
-        exit 1
+        return 2
     fi
 
     print_git_status
+    return 0
 }
 
 git_commit_changes() {
@@ -137,15 +136,16 @@ git_commit_changes() {
     if [ $? -eq 0 ]; then
         log_message SUCCESS "Commit successful."
         color_green "Commit recorded."
+        return 0
     else
         git status | grep -q "nothing to commit" && {
             log_message INFO "Nothing to commit."
-            color_cyan "Nothing committed. Exiting."
-            exit 0
+            color_cyan "Nothing committed."
+            return 1
         }
         log_message ERROR "git commit failed."
-        color_red "git commit failed. Exiting."
-        exit 1
+        color_red "git commit failed."
+        return 2
     fi
 }
 
@@ -172,7 +172,7 @@ git_push_changes() {
         if [ "$yn" != "yes" ]; then
             color_cyan "Push cancelled."
             log_message INFO "Push cancelled by user."
-            exit 0
+            return 1
         fi
         branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
     fi
@@ -181,16 +181,16 @@ git_push_changes() {
     if [ $? -eq 0 ]; then
         log_message SUCCESS "Pushed origin/$branch_name"
         color_green "Push completed!"
+        return 0
     else
         log_message ERROR "git push failed."
         color_red "git push failed, see log."
-        exit 1
+        return 2
     fi
 }
 
 print_commit_summary() {
     sha="$1"; author="$2"; msg="$3"; url="$4"
-
     color_cyan "------ Push Verification Summary ------"
     printf "%-12s : %s\n" "Commit SHA" "$sha"
     printf "%-12s : %s\n" "Author" "$author"
@@ -203,13 +203,13 @@ verify_push_on_github() {
     if ! command -v jq >/dev/null 2>&1; then
         color_red "jq not found, skipping verification."
         log_message ERROR "jq not found."
-        return
+        return 1
     fi
 
     if [ -z "$GITHUB_TOKEN" ] || [ -z "$REPO_OWNER" ]; then
         color_red "GITHUB_TOKEN or REPO_OWNER missing, skipping verification."
         log_message ERROR "Missing GITHUB_TOKEN or REPO_OWNER."
-        return
+        return 1
     fi
 
     color_cyan "Verifying latest commit on GitHub..."
@@ -234,9 +234,11 @@ verify_push_on_github() {
         color_green "Push verified on GitHub!"
         print_commit_summary "$sha" "$author" "$msg" "$commit_url"
         log_message SUCCESS "GitHub verification succeeded for commit $sha"
+        return 0
     else
         color_red "Could not verify push on GitHub. Please check the log."
         log_message ERROR "GitHub verification failed: $response"
+        return 1
     fi
 }
 
@@ -279,7 +281,9 @@ show_recent_changes() {
             fi
         done
     }
+    return 0
 }
+
 
 main() {
     if [ "$#" -lt 1 ]; then
@@ -302,14 +306,20 @@ main() {
     check_git_repo
     print_git_status
     select_changes_to_add
-    git_commit_changes
+    sel_status=$?
+
+    if [ $sel_status -eq 0 ]; then
+        git_commit_changes
+        commit_status=$?
+    else
+        commit_status=1
+    fi
 
     [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
 
     git_push_changes "$USER_BRANCH"
     verify_push_on_github "$USER_BRANCH"
 
-    # Always ask user on each run about recent commit summaries
     color_cyan "Would you like to see recent commit summaries? (yes/no)"
     read answer
     answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
@@ -319,6 +329,5 @@ main() {
 
     log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
 }
-
 
 main "$@"
