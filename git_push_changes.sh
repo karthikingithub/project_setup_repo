@@ -220,6 +220,24 @@ verify_push_on_github() {
     fi
 }
 
+show_recent_changes() {
+    cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
+    color_cyan "How many recent commits do you want to see? (enter a number, default 5):"
+    read num_commits
+    num_commits=${num_commits:-5}
+
+    # Header row
+    printf "%-8s | %-40s | %-20s | %-30s\n" "Commit" "Author" "Date" "Message"
+    printf -- "----------------------------------------------------------------------------------------------\n"
+
+    # Fetch git log, limit to num_commits entries, formatting output
+    git log -n "$num_commits" --pretty=format:"%h | %an | %ad | %s" --date=short | while IFS= read -r line; do
+        printf "%s\n" "$line"
+    done
+}
+
+
+
 main() {
     [ "$#" -lt 1 ] && { color_red "Usage: $0 <project_path> [branch]"; exit 1; }
 
@@ -243,6 +261,14 @@ main() {
     verify_push_on_github "$USER_BRANCH"
 
     log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
+	
+	color_cyan "Would you like to see recent commit summaries? (yes/no)"
+	
+	read ans
+	if [ "$ans" = "yes" ]; then
+		show_recent_changes
+	fi
+
 }
 
 main "$@"
