@@ -29,131 +29,136 @@ This repository contains Korn shell (`ksh`) scripts designed for efficient setup
 
 ### `setup_project.sh`
 
-- Creates a full project directory structure with folders such as `bin`, `src`, `tests`, `docs`, `data`, and others.
-- Generates foundational files like `README.md`, `requirements.txt`, `.gitignore`, `.env.example`, and `CHANGELOG.md`.
-- Sets up a Python virtual environment (`venv`) isolated from system Python.
-- Prepares `README.txt` files in directories outlining their purpose.
-- Idempotent: safe to rerun without overwriting existing setup.
-- Logs all actions clearly with timestamps.
-
-### `cleanup_project.sh`
-
-- Interactively cleans project folders by removing all files and directories except `.git` and important config files.
-- Safeguards uncommitted or staged Git changes, prompting before destructive cleanup.
-- Removes generated log files older than a configurable retention period.
-- Requires user confirmation at key stages for safety.
-
-### `cleanup_old_logs.sh`
-
-- Finds and deletes old script log files exceeding a user-specified age from all script log directories.
-- Cleans up clutter from project and system logs to reclaim disk space.
-- Requires confirmation before deletion.
-
-### `git_checkout.sh`
-
-- Enhanced Git branch management script.
-- Accepts a GitHub URL as input; clones the repo into a subdirectory derived from the repo name within the supplied base path.
-- Supports switching branches within existing local repos.
-- Lists all local and remote branches before prompting user for input.
-- If no branch is specified, asks to confirm fallback to `master` or `main`.
-- Stashes uncommitted changes automatically before checkout and reapplies stash afterward.
-- Logs detailed progress with timestamps and uses colorized output.
-- Shows recent commit logs of the checked-out branch for quick context.
-
-### `start_postgres_plsql.sh`
-
-- Manages PostgreSQL server start and PLSQL session workflows.
-- Reads database connection settings from environment config files.
-- Starts PostgreSQL service if it isn't running.
-- Executes provided PLSQL scripts or interacts with sessions as needed.
-- Logs all significant actions and errors with timestamps.
-- Facilitates seamless integration of PostgreSQL PLSQL work with project environments.
+- Creates a full project folder structure including subdirectories for `src`, `data`, `scripts`, `config`, `tests`, `docs`, `agents`, `workflows`, and many others.
+- Populates each directory with helpful `README.txt` describing its purpose.
+- Sets up basic key files at the project root if missing.
+- Initializes a Python virtual environment (`venv`) within the project and configures `.gitignore` accordingly.
+- Handles folder permissions and logs all setup actions.
 
 ---
 
-## Usage Examples
+### `cleanup_project.sh`
+
+- Safely deletes an entire project directory tree after explicit user confirmation.
+- Checks for directory existence before deletion.
+- Logs every step including user responses and deletion outcomes.
+- Prevents accidental removal by requiring a typed confirmation (`yes`).
+
+---
+
+### `cleanup_old_logs.sh`
+
+- Recursively deletes log files older than 60 days under the configured centralized log directory.
+- Identifies empty directories inactive for 60 or more days and prompts user whether to delete them.
+- Logs every deletion attempt and user decision for audit purposes.
+- Requires `LOG_BASE_DIR` environment variable configured via `$HOME/config.env`.
+
+---
+
+### `git_checkout.sh`
+
+- Facilitates switching Git branches safely within a project repository.
+- Validates repository status and existence of branches.
+- Lists available local and remote branches for user reference.
+- Handles stashing and reapplying uncommitted changes during branch switches.
+- Falls back to common default branches like `main` or `master` if the requested branch is unavailable.
+- Provides recent commit logs of checked out branch for quick context.
+
+---
+
+### `git_push_changes.sh`
+
+- Streamlines the process of staging, committing, and pushing Git changes interactively.
+- Prompts users per changed file for staging selection.
+- Allows commit message input and optional author override.
+- Performs safe push operations to the remote repository.
+- Verifies pushed commits via GitHub API using configured personal access tokens.
+- Generates changelogs automatically after successful pushes.
+- Optionally shows recent commit summaries in a formatted table for quick review.
+
+---
+
+## Usage
 
 Make scripts executable first:
 
+chmod +x setup_project.sh cleanup_project.sh cleanup_old_logs.sh git_checkout.sh git_push_changes.sh
 
-chmod +x setup_project.sh cleanup_project.sh cleanup_old_logs.sh git_checkout.sh git_push_changes.sh start_postgres_plsql.sh
 
+Example commands:
 
-- Setting up a new project:
+- Set up a new project:
 
 
 ./setup_project.sh /your/target/path your_project_name
 
 
-- Cleaning up a project directory safely:
+- Clean up a project directory:
 
 ./cleanup_project.sh /your/target/path your_project_name
 
 
-- Removing old logs (>30 days, configurable):
-
+- Clean old logs:
 
 ./cleanup_old_logs.sh
 
 
-- Cloning a GitHub repo and switching branches via `git_checkout.sh`:
+- Switch Git branches safely:
+
+./git_checkout.sh /absolute/path/to/your/project
 
 
+- Commit and push changes with interactive prompts:
 
-- Switching branches in an existing local git repo:
-
-
-./git_checkout.sh /path/to/local/repo
-
-
-- Starting PostgreSQL and running PLSQL scripts:
-
-
-./start_postgres_plsql.sh /path/to/project/config.env
+ksh git_push_changes.sh /absolute/path/to/your/project
 
 
 ---
 
 ## Configuration
 
-- All scripts rely on an environment config file located at `$HOME/config.env` (or custom project configs).
-- Ensure this config exports necessary environment variables such as:
+Ensure `$HOME/config.env` is set up with the following environment variables:
 
 
-export LOG_BASE_DIR="/path/to/logs"
-export DB_HOST="localhost"
-export DB_PORT="5432"
-export DB_USER="your_user"
-export DB_PASSWORD="your_password"
+
+export LOG_BASE_DIR="/media/karthik/WD-HDD/Learning/labs/log"
 export REPO_OWNER="your_github_username"
 export GITHUB_TOKEN="your_personal_access_token"
 
 
-- Secure these configuration files appropriately.
+---
+
+## Logging
+
+All scripts create timestamped logs stored at:
+
+
+$LOG_BASE_DIR/<script_name>/<project_name>_<timestamp>.log
+
+
+Typical log files include:
+
+- `setup_project_<project_name>_YYYYMMDD_HHMMSS.log`
+- `cleanup_project_<project_name>_YYYYMMDD_HHMMSS.log`
+- `cleanup_old_logs_YYYYMMDD_HHMMSS.log`
+- `git_checkout_<project_name>_YYYYMMDD_HHMMSS.log`
+- `git_push_changes_<project_name>_YYYYMMDD_HHMMSS.log`
 
 ---
 
-## Logs
+## Contribution
 
-Scripts create timestamped logs in subdirectories of `$LOG_BASE_DIR` by script name and project. Example log file path:
-
-$LOG_BASE_DIR/git_checkout/project_name_YYYYMMDD_HHMMSS.log
-
+Please open issues or submit pull requests for improvements, bug fixes, or new features. Contributions and feedback are welcome.
 
 ---
 
-## Contribution & Support
+## Maintainer
 
-Contributions, bug reports, and pull requests are welcome.
+Karthik KN
 
 ---
 
+Thank you for using these scripts! Feel free to customize them for your organizational workflows and project requirements.
 
 
-
-
-Maintained by Karthik K.N
-
---------
-
-Thank you for using these scripts! Customize as necessary for your workflows and organizational requirements.
+K
