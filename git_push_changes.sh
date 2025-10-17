@@ -4,9 +4,10 @@
 #   ./git_push_changes.sh /path/to/project/project_name [branch]
 #
 # Interactive git add/commit/push script.
-# Reads GITHUB_TOKEN from $HOME/config.env or environment.
-# Shows status, stages interactively, robust error handling, branch check,
-# verifies push on GitHub using REST API, logs all actions.
+# Reads GITHUB_TOKEN and REPO_OWNER from $HOME/config.env (if available).
+# Repository name is derived from project folder name.
+# Uses 'jq' for JSON parsing to verify push on GitHub.
+# Comprehensive logging, robust error handling, and user prompts.
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
@@ -18,33 +19,33 @@ PROJECT_PATH=""
 PROJECT_NAME=""
 USER_BRANCH=""
 LOG_FILE=""
+REPO_OWNER=""
 
-# --------- Load GitHub token from config.env if not in env ---------
-load_github_token() {
-    if [ -z "$GITHUB_TOKEN" ]; then
-        if [ -f "$HOME/config.env" ]; then
-            . "$HOME/config.env"
-            if [ -n "$GITHUB_TOKEN" ]; then
-                log_message INFO "Loaded GITHUB_TOKEN from $HOME/config.env"
-            else
-                log_message ERROR "GITHUB_TOKEN not found in $HOME/config.env"
-                color_red "WARNING: GITHUB_TOKEN not found in $HOME/config.env"
-            fi
-        else
-            log_message ERROR "$HOME/config.env not found, GITHUB_TOKEN not set"
-            color_red "WARNING: $HOME/config.env not found and GITHUB_TOKEN not set"
-        fi
+load_config() {
+    if [ -f "$HOME/config.env" ]; then
+        # shellcheck source=/dev/null
+        . "$HOME/config.env"
+        log_message INFO "Loaded config from $HOME/config.env"
     else
-        log_message INFO "Using GITHUB_TOKEN from environment"
+        color_red "WARNING: $HOME/config.env not found. Please create it to set environment variables."
+        log_message ERROR "$HOME/config.env not found."
+    fi
+
+    # Validate required env variables
+    if [ -z "$GITHUB_TOKEN" ]; then
+        color_red "WARNING: GITHUB_TOKEN is not set in environment or config.env."
+        log_message ERROR "GITHUB_TOKEN not set."
+    fi
+    if [ -z "$REPO_OWNER" ]; then
+        color_red "WARNING: REPO_OWNER is not set in environment or config.env."
+        log_message ERROR "REPO_OWNER not set."
     fi
 }
 
-# --------- Color Helper Functions ---------
 color_green() { tput setaf 2; print "$1"; tput sgr0; }
 color_red() { tput setaf 1; print "$1"; tput sgr0; }
 color_cyan() { tput setaf 6; print "$1"; tput sgr0; }
 
-# --------- Logging Function ---------
 log_message() {
     level=$1
     shift
@@ -59,7 +60,6 @@ log_message() {
     esac
 }
 
-# --------- Check for Git Repo ---------
 check_git_repo() {
     if [ ! -d "$PROJECT_PATH/.git" ]; then
         log_message ERROR "No .git directory found in $PROJECT_PATH"
@@ -68,7 +68,6 @@ check_git_repo() {
     fi
 }
 
-# --------- Display Status ---------
 print_git_status() {
     color_cyan "---------- GIT STATUS ----------"
     git status
@@ -79,7 +78,6 @@ print_git_status() {
     fi
 }
 
-# --------- Select and Stage Changes ---------
 select_changes_to_add() {
     typeset -a files_to_add
     cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd to $PROJECT_PATH"; exit 1; }
@@ -135,7 +133,6 @@ select_changes_to_add() {
     print_git_status
 }
 
-# --------- Commit with Message ---------
 git_commit_changes() {
     print ""
     color_cyan "Please enter a commit message for this change:"
@@ -158,7 +155,6 @@ git_commit_changes() {
     fi
 }
 
-# --------- Branch Handling and Git Push ---------
 git_push_changes() {
     if [ -z "$1" ]; then
         print ""
@@ -201,46 +197,51 @@ git_push_changes() {
     fi
 }
 
-# --------- Verify Commit is on GitHub via API ---------
 verify_push_on_github() {
-    repo_owner="karthikingithub"
-    repo_name="project_setup_repo"
-    branch_name="$1"
-    github_token="$GITHUB_TOKEN"
+    if ! command -v jq >/dev/null 2>&1; then
+        color_red "jq is not installed. Skipping GitHub push verification."
+        log_message ERROR "jq not installed, skipping GitHub verification."
+        return
+    fi
 
-    if [ -z "$github_token" ]; then
-        color_red "ERROR: GITHUB_TOKEN is not set in environment or config.env. Skipping GitHub verify."
-        log_message ERROR "GITHUB_TOKEN not set. Skipping GitHub verify."
+    if [ -z "$GITHUB_TOKEN" ] || [ -z "$REPO_OWNER" ]; then
+        color_red "ERROR: GITHUB_TOKEN or REPO_OWNER is not set. Skipping GitHub verify."
+        log_message ERROR "GITHUB_TOKEN or REPO_OWNER not set. Skipping GitHub verify."
         return
     fi
 
     print ""
     color_cyan "Verifying latest commit on GitHub..."
 
+    repo_name="$PROJECT_NAME"
+    github_token="$GITHUB_TOKEN"
+    repo_owner="$REPO_OWNER"
+    branch_name="$1"
+
     response=$(curl -s -H "Authorization: token $github_token" \
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
     log_message INFO "GitHub API response: $response"
 
-    sha=$(echo "$response" | grep -Po '"sha":\s*"\K[0-9a-f]{40}' | head -1)
-    msg=$(echo "$response" | grep -Po '"message":\s*"\K[^"]*' | head -1)
-    author=$(echo "$response" | grep -Po '"login":\s*"\K[^"]*' | head -1)
+    sha=$(echo "$response" | jq -r .commit.sha)
+    msg=$(echo "$response" | jq -r .commit.commit.message)
+    author=$(echo "$response" | jq -r .commit.commit.author.name)
+    commit_url=$(echo "$response" | jq -r .commit.html_url)
 
-    if [ -n "$sha" ]; then
+    if [ "$sha" != "null" ]; then
         color_green "Push verified on GitHub!"
         color_cyan "Latest commit on $repo_name ($branch_name):"
         print "SHA: $sha"
         print "Author: $author"
         print "Message: $msg"
-        print "URL: https://github.com/$repo_owner/$repo_name/commit/$sha"
+        print "URL: $commit_url"
         log_message SUCCESS "GitHub verification passed for commit $sha ($msg)"
     else
         color_red "Could not verify push on GitHub. Please check manually."
-        log_message ERROR "GitHub commit verification failed. API response: $response"
+        log_message ERROR "GitHub commit verification failed. Response: $response"
     fi
 }
 
-# --------- Main Runner ---------
 main() {
     if [ "$#" -lt 1 ]; then
         color_red "Usage: $0 <path_to_project/project_name> [branch]"
@@ -250,10 +251,9 @@ main() {
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
     PROJECT_NAME=$(basename "$PROJECT_PATH")
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_${timestamp}.log"
+    LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
-    load_github_token
+    load_config
 
     log_message INFO "Starting Git interactive check-in for $PROJECT_PATH"
 
@@ -265,7 +265,6 @@ main() {
 
     git_commit_changes
 
-    # Make sure to define USER_BRANCH properly before push and verify
     if [ -z "$USER_BRANCH" ]; then
         USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
     fi
@@ -276,6 +275,5 @@ main() {
 
     log_message SUCCESS "Git check-in and push cycle completed for $PROJECT_PATH"
 }
-
 
 main "$@"
