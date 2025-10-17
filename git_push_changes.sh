@@ -258,39 +258,35 @@ show_recent_changes() {
 
     repo_name=$(basename "$PROJECT_PATH")
 
-    printf "%-18s | %-10s | %-15s | %-10s | %-40s | %s\n" "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-    printf -- "-----------------------------------------------------------------------------------------------------------------------------------\n"
+    printf "%-20s | %-8s | %-15s | %-10s | %-40s | %-30s\n" \
+      "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+    printf "%s\n" "---------------------|----------|-----------------|------------|------------------------------------------|------------------------------"
 
-    git log -n "$num_commits" --pretty=format:"%H%x00%h%x00%an%x00%ad%x00%s" --date=short --name-only -z | {
-        while true; do
-            read -r -d $'\0' full_sha || break
-            read -r -d $'\0' short_sha || break
-            read -r -d $'\0' author || break
-            read -r -d $'\0' date || break
-            read -r -d $'\0' message || break
-
-            files=""
-            while IFS= read -r -d $'\0' file; do
-                if [ ${#file} -eq 40 ] && echo "$file" | grep -qE '^[0-9a-f]{40}$'; then
-                    next_commit_sha="$file"
-                    break
-                fi
-                files="${files}${file}, "
-            done
-            files=${files%, }
-
-            printf "%-18s | %-10s | %-15s | %-10s | %-40s | %s\n" "$repo_name" "$short_sha" "$author" "$date" "$message" "$files"
-
-            if [ -n "$next_commit_sha" ]; then
-                full_sha="$next_commit_sha"
-                unset next_commit_sha
-            else
-                break
-            fi
-        done
+    git log -n "$num_commits" --pretty=format:"%h%x00%an%x00%ad%x00%s" --date=short --name-only -z | \
+    awk -v project="$repo_name" 'BEGIN {
+        FS="\0";
+        OFS=" | ";
     }
-    return 0
+    {
+        commit=$1;
+        author=$2;
+        date=$3;
+        message=$4;
+        getline filelist;   # filenames (can be empty)
+        # collapse multiple file lines into one, join by comma
+        file_str="";
+        do {
+            if (filelist != "") {
+                if (file_str != "") file_str = file_str ", ";
+                file_str = file_str filelist;
+            }
+        } while (getline filelist > 0 && filelist !~ /^[0-9a-f]{7}$/)
+        # Print actual summary row with padded cells
+        printf "%-20s | %-8s | %-15s | %-10s | %-40s | %-30s\n", \
+            project, commit, author, date, message, file_str;
+    }'
 }
+
 
 main() {
     if [ "$#" -lt 1 ]; then
