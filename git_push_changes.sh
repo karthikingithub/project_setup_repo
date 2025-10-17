@@ -309,6 +309,7 @@ main() {
     git_push_changes "$USER_BRANCH"
     verify_push_on_github "$USER_BRANCH"
 
+    # Always ask user on each run about recent commit summaries
     color_cyan "Would you like to see recent commit summaries? (yes/no)"
     read answer
     answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
@@ -318,5 +319,6 @@ main() {
 
     log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
 }
+
 
 main "$@"
