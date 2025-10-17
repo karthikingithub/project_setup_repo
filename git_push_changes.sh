@@ -4,8 +4,10 @@
 #   ./git_push_changes.sh /path/to/project/project_name [branch]
 #
 # Interactive git add/commit/push script.
+# Reads GITHUB_TOKEN from $HOME/config.env or environment.
 # Shows status, stages interactively, robust error handling, branch check,
-# verifies push on GitHub using GITHUB_TOKEN env, logs all actions.
+# verifies push on GitHub using REST API, logs all actions.
+# Korn shell compatible.
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
@@ -17,6 +19,25 @@ PROJECT_PATH=""
 PROJECT_NAME=""
 USER_BRANCH=""
 LOG_FILE=""
+
+# --------- Load GitHub token from config.env if not in env ---------
+load_github_token() {
+    if [ -z "$GITHUB_TOKEN" ]; then
+        if [ -f "$HOME/config.env" ]; then
+            # Load config.env contents safely
+            . "$HOME/config.env"
+            if [ -z "$GITHUB_TOKEN" ]; then
+                color_red "WARNING: GITHUB_TOKEN not found in $HOME/config.env"
+            else
+                log_message INFO "Loaded GITHUB_TOKEN from $HOME/config.env"
+            fi
+        else
+            color_red "WARNING: $HOME/config.env not found. GITHUB_TOKEN not set."
+        fi
+    else
+        log_message INFO "Using GITHUB_TOKEN from environment"
+    fi
+}
 
 # --------- Color Helper Functions ---------
 color_green() { tput setaf 2; print "$1"; tput sgr0; }
@@ -64,7 +85,6 @@ select_changes_to_add() {
     cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd to $PROJECT_PATH"; exit 1; }
     print_git_status
 
-    # Use porcelain -z for NUL-separated output, robust with all file names
     git status --porcelain -z > .git_temp_status
     if [ ! -s .git_temp_status ]; then
         log_message INFO "No unstaged, modified, or untracked files found. Nothing to add."
@@ -80,7 +100,7 @@ select_changes_to_add() {
         status="${entry:0:2}"
         file="${entry:3}"
         [ -z "$file" ] && continue
-        [ "$file" = ".git_temp_status" ] && continue  # Skip temp itself
+        [ "$file" = ".git_temp_status" ] && continue
         color_cyan "Staging? [$status] $file"
         print "Add this file to staging area? (yes/no) "
         read answer
@@ -114,7 +134,6 @@ select_changes_to_add() {
 
     print_git_status
 }
-
 
 # --------- Commit with Message ---------
 git_commit_changes() {
@@ -190,7 +209,7 @@ verify_push_on_github() {
     github_token="$GITHUB_TOKEN"
 
     if [ -z "$github_token" ]; then
-        color_red "ERROR: GITHUB_TOKEN is not set in environment. Skipping GitHub verify."
+        color_red "ERROR: GITHUB_TOKEN is not set in environment or config.env. Skipping GitHub verify."
         log_message ERROR "GITHUB_TOKEN not set. Skipping GitHub verify."
         return
     fi
@@ -201,9 +220,9 @@ verify_push_on_github() {
     response=$(curl -s -H "Authorization: token $github_token" \
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
-    sha=$(echo "$response" | grep -o '"sha":"[^"]*' | head -1 | cut -d'"' -f4)
-    author=$(echo "$response" | grep -o '"login":"[^"]*' | head -1 | cut -d'"' -f4)
-    msg=$(echo "$response" | grep -o '"message":"[^"]*' | head -1 | cut -d'"' -f4)
+    sha=$(echo "$response" | grep -Po '"sha":\s*"\K[0-9a-f]{40}' | head -1)
+    msg=$(echo "$response" | grep -Po '"message":\s*"\K[^"]*' | head -1)
+    author=$(echo "$response" | grep -Po '"login":\s*"\K[^"]*' | head -1)
 
     if [ -n "$sha" ]; then
         color_green "Push verified on GitHub!"
@@ -219,13 +238,14 @@ verify_push_on_github() {
     fi
 }
 
-
 # --------- Main Runner ---------
 main() {
     if [ "$#" -lt 1 ]; then
         color_red "Usage: $0 <path_to_project/project_name> [branch]"
         exit 1
     fi
+
+    load_github_token
 
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
