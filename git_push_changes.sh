@@ -236,6 +236,7 @@ verify_push_on_github() {
     response=$(curl -s -H "Authorization: token $github_token" \
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
+    # Log the full API response quietly; no console print so output is clean
     log_message INFO "GitHub API response: $response"
 
     sha=$(echo "$response" | jq -r .commit.sha)
@@ -252,6 +253,7 @@ verify_push_on_github() {
         log_message ERROR "GitHub commit verification failed. Response: $response"
     fi
 }
+
 
 main() {
     if [ "$#" -lt 1 ]; then
