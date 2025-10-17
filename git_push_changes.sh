@@ -10,6 +10,8 @@ LOG_FILE=""
 LOG_BASE_DIR=""
 REPO_OWNER=""
 GITHUB_TOKEN=""
+GIT_AUTHOR_NAME=""
+GIT_AUTHOR_EMAIL=""
 
 load_config() {
     if [ ! -f "$HOME/config.env" ]; then
@@ -74,9 +76,12 @@ print_git_status() {
 select_changes_to_add() {
     typeset -a files_to_add
     cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; return 1; }
-    
-    # Print git status here before file selection
+
     print_git_status
+
+    # Show diff preview of unstaged changes
+    color_cyan "Preview of Uncommitted Changes (git diff --stat):"
+    git diff --stat
 
     git status --porcelain -z > .git_temp_status
     if [ ! -s .git_temp_status ]; then
@@ -106,7 +111,6 @@ select_changes_to_add() {
         fi
     done
     exec 3<&-
-
     rm -f .git_temp_status
 
     if [ ${#files_to_add[@]} -eq 0 ]; then
@@ -125,9 +129,12 @@ select_changes_to_add() {
         return 2
     fi
 
-    # Print git status after staging
     print_git_status
-    
+
+    # Show diff preview of staged changes
+    color_cyan "Review STAGED CHANGES to be committed (git diff --cached --stat):"
+    git diff --cached --stat
+
     return 0
 }
 
@@ -136,14 +143,14 @@ git_commit_changes() {
     read commit_msg
     [ -z "$commit_msg" ] && commit_msg="Routine update"
 
-    git commit -m "$commit_msg"
+    if [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR_EMAIL" ]; then
+        git -c user.name="$GIT_AUTHOR_NAME" -c user.email="$GIT_AUTHOR_EMAIL" commit -m "$commit_msg"
+    else
+        git commit -m "$commit_msg"
+    fi
     if [ $? -eq 0 ]; then
         log_message SUCCESS "Commit successful."
         color_green "Commit recorded."
-        
-        # Print git status after commit to show clean working directory
-        # print_git_status
-        
         return 0
     else
         git status | grep -q "nothing to commit" && {
@@ -165,7 +172,7 @@ git_push_changes() {
         branch_name="$1"
     fi
 
-    [ -z "$branch_name" ] && branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
+    [ -z "$branch_name" ] && branch_name=$(git -C "$PROJECT_PATH" symbolic_ref --short HEAD)
 
     color_cyan "Available branches:"
     git -C "$PROJECT_PATH" branch
@@ -250,34 +257,34 @@ verify_push_on_github() {
     fi
 }
 
+generate_changelog() {
+    cd "$PROJECT_PATH" || return
+    color_cyan "Generating change log for latest commits."
+    num_entries=10
+    changelog_file="${LOG_DIR}/CHANGELOG_$(date +%Y%m%d_%H%M%S).txt"
+    git log -n "$num_entries" --pretty=format:"%h | %an | %ad | %s" --date=short > "$changelog_file"
+    color_green "Changelog written to $changelog_file"
+}
+
 show_recent_changes() {
     cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
     color_cyan "How many recent commits do you want to see? (default 5):"
     read num_commits
     num_commits=${num_commits:-5}
     repo_name=$(basename "$PROJECT_PATH")
-    # Column widths
-    # Define the width for each column
-w_project=18; w_commit=8; w_author=14; w_date=10; w_message=34; w_files=30
-
-# Header - pad every string to column width
-printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-  "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-
-# Separator - fill each with dashes, not header length
-printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-  "$(printf '%*s' $w_project | tr ' ' '-')" \
-  "$(printf '%*s' $w_commit | tr ' ' '-')" \
-  "$(printf '%*s' $w_author | tr ' ' '-')" \
-  "$(printf '%*s' $w_date | tr ' ' '-')" \
-  "$(printf '%*s' $w_message | tr ' ' '-')" \
-  "$(printf '%*s' $w_files | tr ' ' '-')"
-
-    # Data rows
+    w_project=18; w_commit=8; w_author=14; w_date=10; w_message=34; w_files=30
+    printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
+      "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+    printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
+      "$(printf '%*s' $w_project | tr ' ' '-')" \
+      "$(printf '%*s' $w_commit | tr ' ' '-')" \
+      "$(printf '%*s' $w_author | tr ' ' '-')" \
+      "$(printf '%*s' $w_date | tr ' ' '-')" \
+      "$(printf '%*s' $w_message | tr ' ' '-')" \
+      "$(printf '%*s' $w_files | tr ' ' '-')"
     git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short |
     while IFS='|' read -r short_sha author date message; do
         files=$(git show --pretty="" --name-only "$short_sha" | paste -sd, -)
-        # Truncate long fields for neat display
         t_message=$(echo "$message" | cut -c1-$w_message)
         [ "${#message}" -gt $w_message ] && t_message="$t_message…"
         t_files=$(echo "$files" | cut -c1-$w_files)
@@ -286,7 +293,6 @@ printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w
           "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
     done
 }
-
 
 main() {
     if [ "$#" -lt 1 ]; then
@@ -299,10 +305,17 @@ main() {
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
     PROJECT_NAME=$(basename "$PROJECT_PATH")
-
     LOG_DIR="${LOG_BASE_DIR}/${PROJECT_NAME}"
     mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
     LOG_FILE="${LOG_DIR}/${SCRIPT_NAME}_$(date +%Y%m%d_%H%M%S).log"
+
+    color_cyan "Override git author? (leave blank for default, or format 'Name <email>'):"
+    read custom_author
+    if [ -n "$custom_author" ]; then
+        export GIT_AUTHOR_NAME="$(echo $custom_author | sed 's/ *<.*//')"
+        export GIT_AUTHOR_EMAIL="$(echo $custom_author | sed -n 's/.*<\(.*\)>/\1/p')"
+        color_green "Author set for commit: $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>"
+    fi
 
     log_message INFO "Starting git check-in for $PROJECT_PATH"
 
@@ -321,6 +334,7 @@ main() {
             [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
             git_push_changes "$USER_BRANCH"
             verify_push_on_github "$USER_BRANCH"
+            generate_changelog
         fi
     fi
 
@@ -333,6 +347,5 @@ main() {
 
     log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
 }
-
 
 main "$@"
