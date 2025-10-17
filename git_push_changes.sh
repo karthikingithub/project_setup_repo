@@ -74,7 +74,9 @@ print_git_status() {
 select_changes_to_add() {
     typeset -a files_to_add
     cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; return 1; }
-    #print_git_status
+    
+    # Print git status here before file selection
+    print_git_status
 
     git status --porcelain -z > .git_temp_status
     if [ ! -s .git_temp_status ]; then
@@ -123,7 +125,9 @@ select_changes_to_add() {
         return 2
     fi
 
+    # Print git status after staging
     print_git_status
+    
     return 0
 }
 
@@ -136,6 +140,10 @@ git_commit_changes() {
     if [ $? -eq 0 ]; then
         log_message SUCCESS "Commit successful."
         color_green "Commit recorded."
+        
+        # Print git status after commit to show clean working directory
+        print_git_status
+        
         return 0
     else
         git status | grep -q "nothing to commit" && {
@@ -284,7 +292,6 @@ show_recent_changes() {
     return 0
 }
 
-
 main() {
     if [ "$#" -lt 1 ]; then
         color_red "Usage: $0 <path_to_project/project_name> [branch]"
@@ -304,15 +311,21 @@ main() {
     log_message INFO "Starting git check-in for $PROJECT_PATH"
 
     check_git_repo
-    print_git_status
+
+    # Removed initial print_git_status here
+    
+    sel_status=1
     select_changes_to_add
     sel_status=$?
-
+    
+    commit_status=1
     if [ $sel_status -eq 0 ]; then
         git_commit_changes
         commit_status=$?
-    else
-        commit_status=1
+        if [ $commit_status -eq 0 ]; then
+            # print git status after successful commit
+            print_git_status
+        fi
     fi
 
     [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
