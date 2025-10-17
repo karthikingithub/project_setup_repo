@@ -308,26 +308,21 @@ main() {
 
     check_git_repo
 
-    # Removed initial print_git_status here
-    
     sel_status=1
     select_changes_to_add
     sel_status=$?
-    
+
     commit_status=1
     if [ $sel_status -eq 0 ]; then
         git_commit_changes
         commit_status=$?
         if [ $commit_status -eq 0 ]; then
-            # print git status after successful commit
             print_git_status
+            [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
+            git_push_changes "$USER_BRANCH"
+            verify_push_on_github "$USER_BRANCH"
         fi
     fi
-
-    [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
-
-    git_push_changes "$USER_BRANCH"
-    verify_push_on_github "$USER_BRANCH"
 
     color_cyan "Would you like to see recent commit summaries? (yes/no)"
     read answer
@@ -338,5 +333,6 @@ main() {
 
     log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
 }
+
 
 main "$@"
