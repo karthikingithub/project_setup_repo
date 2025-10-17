@@ -154,6 +154,6 @@ Contributions, bug reports, and pull requests are welcome.
 
 Maintained by Karthik K.N
 
----
+--------
 
 Thank you for using these scripts! Customize as necessary for your workflows and organizational requirements.
