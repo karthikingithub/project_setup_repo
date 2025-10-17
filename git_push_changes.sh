@@ -247,13 +247,13 @@ main() {
         exit 1
     fi
 
-    load_github_token
-
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
     PROJECT_NAME=$(basename "$PROJECT_PATH")
     timestamp=$(date +%Y%m%d_%H%M%S)
     LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_${timestamp}.log"
+
+    load_github_token
 
     log_message INFO "Starting Git interactive check-in for $PROJECT_PATH"
 
@@ -265,11 +265,17 @@ main() {
 
     git_commit_changes
 
+    # Make sure to define USER_BRANCH properly before push and verify
+    if [ -z "$USER_BRANCH" ]; then
+        USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
+    fi
+
     git_push_changes "$USER_BRANCH"
 
     verify_push_on_github "$USER_BRANCH"
 
     log_message SUCCESS "Git check-in and push cycle completed for $PROJECT_PATH"
 }
+
 
 main "$@"
