@@ -7,7 +7,6 @@
 # Reads GITHUB_TOKEN from $HOME/config.env or environment.
 # Shows status, stages interactively, robust error handling, branch check,
 # verifies push on GitHub using REST API, logs all actions.
-# Korn shell compatible.
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
@@ -22,11 +21,8 @@ LOG_FILE=""
 
 # --------- Load GitHub token from config.env if not in env ---------
 load_github_token() {
-    # LOG_FILE assumed to be set before this call
-    
     if [ -z "$GITHUB_TOKEN" ]; then
         if [ -f "$HOME/config.env" ]; then
-            # shellcheck source=/dev/null
             . "$HOME/config.env"
             if [ -n "$GITHUB_TOKEN" ]; then
                 log_message INFO "Loaded GITHUB_TOKEN from $HOME/config.env"
@@ -42,6 +38,7 @@ load_github_token() {
         log_message INFO "Using GITHUB_TOKEN from environment"
     fi
 }
+
 # --------- Color Helper Functions ---------
 color_green() { tput setaf 2; print "$1"; tput sgr0; }
 color_red() { tput setaf 1; print "$1"; tput sgr0; }
@@ -163,26 +160,26 @@ git_commit_changes() {
 
 # --------- Branch Handling and Git Push ---------
 git_push_changes() {
-    branch_name="$1"
-
-    color_cyan "---------- AVAILABLE BRANCHES ----------"
-    git branch
-
-    if [ -z "$branch_name" ]; then
+    if [ -z "$1" ]; then
         print ""
         color_cyan "No branch specified. Enter branch to push (leave blank for current):"
-        read input_branch
-        branch_name="$input_branch"
-    fi
-    if [ -z "$branch_name" ]; then
-        branch_name=$(git symbolic-ref --short HEAD)
+        read branch_name
+    else
+        branch_name="$1"
     fi
 
-    git show-ref --verify --quiet "refs/heads/$branch_name"
+    if [ -z "$branch_name" ]; then
+        branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
+    fi
+
+    color_cyan "---------- AVAILABLE BRANCHES ----------"
+    git -C "$PROJECT_PATH" branch
+
+    git -C "$PROJECT_PATH" show-ref --verify --quiet "refs/heads/$branch_name"
     if [ $? -ne 0 ]; then
         log_message ERROR "Branch $branch_name does not exist."
         color_red "ERROR: Branch '$branch_name' does not exist."
-        print "Use current branch $(git symbolic-ref --short HEAD) instead? (yes/no) "
+        print "Use current branch $(git -C "$PROJECT_PATH" symbolic-ref --short HEAD) instead? (yes/no) "
         read answer
         answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
         if [ "$answer" != "yes" ]; then
@@ -190,10 +187,10 @@ git_push_changes() {
             log_message INFO "Push cancelled by user. Nothing pushed."
             exit 0
         fi
-        branch_name=$(git symbolic-ref --short HEAD)
+        branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
     fi
 
-    git push origin "$branch_name"
+    git -C "$PROJECT_PATH" push origin "$branch_name"
     if [ $? -eq 0 ]; then
         log_message SUCCESS "Push to origin/$branch_name successful."
         color_green "Push completed!"
@@ -212,36 +209,36 @@ verify_push_on_github() {
     github_token="$GITHUB_TOKEN"
 
     if [ -z "$github_token" ]; then
-        echo "ERROR: GITHUB_TOKEN not set, skipping verification."
+        color_red "ERROR: GITHUB_TOKEN is not set in environment or config.env. Skipping GitHub verify."
+        log_message ERROR "GITHUB_TOKEN not set. Skipping GitHub verify."
         return
     fi
 
-    echo "Verifying latest commit on GitHub..."
+    print ""
+    color_cyan "Verifying latest commit on GitHub..."
 
-    # Get API response
     response=$(curl -s -H "Authorization: token $github_token" \
-        "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
+      "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
-    # Print response to log for debugging
-    echo "$response" >> ${LOG_FILE}
+    log_message INFO "GitHub API response: $response"
 
-    # Parse commit SHA - improved pattern
     sha=$(echo "$response" | grep -Po '"sha":\s*"\K[0-9a-f]{40}' | head -1)
     msg=$(echo "$response" | grep -Po '"message":\s*"\K[^"]*' | head -1)
     author=$(echo "$response" | grep -Po '"login":\s*"\K[^"]*' | head -1)
 
     if [ -n "$sha" ]; then
-        echo "Push verified on GitHub!"
-        echo "Latest commit on $repo_name ($branch_name):"
-        echo "SHA: $sha"
-        echo "Author: $author"
-        echo "Message: $msg"
-        echo "URL: https://github.com/$repo_owner/$repo_name/commit/$sha"
+        color_green "Push verified on GitHub!"
+        color_cyan "Latest commit on $repo_name ($branch_name):"
+        print "SHA: $sha"
+        print "Author: $author"
+        print "Message: $msg"
+        print "URL: https://github.com/$repo_owner/$repo_name/commit/$sha"
+        log_message SUCCESS "GitHub verification passed for commit $sha ($msg)"
     else
-        echo "Could not verify push on GitHub. Please check manually. API response may be invalid."
+        color_red "Could not verify push on GitHub. Please check manually."
+        log_message ERROR "GitHub commit verification failed. API response: $response"
     fi
 }
-
 
 # --------- Main Runner ---------
 main() {
@@ -250,24 +247,28 @@ main() {
         exit 1
     fi
 
+    load_github_token
+
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
     PROJECT_NAME=$(basename "$PROJECT_PATH")
-    
     timestamp=$(date +%Y%m%d_%H%M%S)
     LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_${timestamp}.log"
-
-    # Load token AFTER LOG_FILE is set
-    load_github_token
 
     log_message INFO "Starting Git interactive check-in for $PROJECT_PATH"
 
     check_git_repo
+
     print_git_status
+
     select_changes_to_add
+
     git_commit_changes
+
     git_push_changes "$USER_BRANCH"
+
     verify_push_on_github "$USER_BRANCH"
+
     log_message SUCCESS "Git check-in and push cycle completed for $PROJECT_PATH"
 }
 
