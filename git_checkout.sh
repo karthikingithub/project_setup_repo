@@ -1,85 +1,51 @@
 #!/bin/ksh
 
-# Script Name: git_push_changes.sh
-
+# Script Name: git_checkout.sh
 # Purpose:
-# This script automates the process of staging, committing, and pushing changes
-# to a Git repository. It supports interactive selection of files to stage,
-# custom commit messages, and pushes to a specified or current branch.
-# Includes logging and color-coded terminal output for user feedback.
-# It verifies push success via GitHub API if configured, and can display
-# recent commit summaries as a changelog.
-
+#   Automate git checkout with support for git URL or local path.
+#   Handles cloning, branch checkout with stash for uncommitted changes.
 # Usage:
-# ./git_push_changes.sh /path/to/git/project [branch]
-
-# Requirements:
-# - $HOME/config.env must exist and define:
-#   LOG_BASE_DIR - base directory for logs
-#   REPO_OWNER - GitHub repository owner
-#   GITHUB_TOKEN - GitHub personal access token with repo permissions
-# - 'jq' command-line JSON processor for GitHub API verification (optional)
-# - Sufficient permissions for Git operations and internet access for API calls
-
-# Author:
-# Karthik KN
-# Date:
-# [10/17/2025]
+#   ksh git_checkout.sh <github_repo_url> <local_target_path>
+#   OR
+#   ksh git_checkout.sh <local_git_repo_path>
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
-PROJECT_PATH=""
-PROJECT_NAME=""
-USER_BRANCH=""
-LOG_FILE=""
-LOG_BASE_DIR=""
-REPO_OWNER=""
-GITHUB_TOKEN=""
-GIT_AUTHOR_NAME=""
-GIT_AUTHOR_EMAIL=""
 
-# Load configuration environment variables from $HOME/config.env
+PROJECT_PATH=""
+LOG_BASE_DIR=""
+LOG_FILE=""
+
+# Helper: check if string is a git URL (GitHub)
+is_git_url() {
+  [[ "$1" =~ ^(https:\/\/github\.com\/|git@github\.com:) ]] && return 0 || return 1
+}
+
+# Load config (expecting LOG_BASE_DIR defined in $HOME/config.env)
 load_config() {
   if [ ! -f "$HOME/config.env" ]; then
-    color_red "ERROR: Config file $HOME/config.env missing. Cannot proceed."
+    print "ERROR: Config file $HOME/config.env missing. Cannot proceed."
     exit 1
   fi
   . "$HOME/config.env"
-
   if [ -z "$LOG_BASE_DIR" ]; then
-    color_red "ERROR: LOG_BASE_DIR not set in config."
-    exit 1
-  fi
-
-  if [ -z "$REPO_OWNER" ]; then
-    color_red "ERROR: REPO_OWNER not set in config."
-    exit 1
-  fi
-
-  if [ -z "$GITHUB_TOKEN" ]; then
-    color_red "ERROR: GITHUB_TOKEN not set in config."
+    print "ERROR: LOG_BASE_DIR not set in config."
     exit 1
   fi
 }
 
-# Color coded output helpers
+# Color output helpers
 color_green() { tput setaf 2; print "$1"; tput sgr0; }
 color_red() { tput setaf 1; print "$1"; tput sgr0; }
 color_cyan() { tput setaf 6; print "$1"; tput sgr0; }
 
-# Log message function with timestamp and severity level; supports silent logging
+# Logging function
 log_message() {
   level=$1
   shift
   msg=$*
-  silent=0
-  if [[ "$level" == silent* ]]; then
-    level=${level#silent}
-    silent=1
-  fi
   timestamp=$(date '+%Y-%m-%d %H:%M:%S')
   print "$timestamp [$level] $msg" >> "$LOG_FILE"
-  [ "$silent" -eq 1 ] && return
   case "$level" in
     SUCCESS) color_green "$msg" ;;
     ERROR) color_red "$msg" ;;
@@ -88,7 +54,7 @@ log_message() {
   esac
 }
 
-# Validate that the directory is a Git repository
+# Check valid git repo
 check_git_repo() {
   if [ ! -d "$PROJECT_PATH/.git" ]; then
     log_message ERROR "No .git directory in $PROJECT_PATH"
@@ -97,307 +63,185 @@ check_git_repo() {
   fi
 }
 
-# Switch Git remote URL to SSH if it is currently HTTPS
-switch_to_ssh_remote() {
-  remote_url=$(git -C "$PROJECT_PATH" remote get-url origin)
-  if [[ "$remote_url" =~ ^https://github.com/ ]]; then
-    ssh_url="git@github.com:${REPO_OWNER}/${PROJECT_NAME}.git"
-    git -C "$PROJECT_PATH" remote set-url origin "$ssh_url"
-    log_message INFO "Switched Git remote to SSH URL: $ssh_url"
-    color_green "Switched Git remote to SSH URL."
-  fi
-}
-
-# Display current Git status
-print_git_status() {
-  color_cyan "---------- GIT STATUS ----------"
-  git status
-  [ $? -ne 0 ] && { log_message ERROR "git status failed"; color_red "ERROR: git status failed"; exit 1; }
-}
-
-# Interactive selection of files to stage for commit
-select_changes_to_add() {
-  typeset -a files_to_add
-
-  cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; return 1; }
-  print_git_status
-  color_cyan "Preview of Uncommitted Changes (git diff --stat):"
-  git diff --stat
-  git status --porcelain -z > .git_temp_status
-  if [ ! -s .git_temp_status ]; then
-    log_message INFO "No unstaged or untracked changes"
-    color_cyan "No changes to commit or push."
-    rm -f .git_temp_status
-    return 1
-  fi
-
-  color_cyan "---------- FILES FOR ADD ----------"
-  exec 3<.git_temp_status
-  while IFS= read -r -u 3 -d '' entry; do
-    status="${entry:0:2}"
-    file="${entry:3}"
-    [ -z "$file" ] && continue
-    [ "$file" = ".git_temp_status" ] && continue
-    color_cyan "Stage? [$status] $file"
-    print "Add this file? (yes/no): "
-    read ans
-    ans=$(echo "$ans" | tr '[:upper:]' '[:lower:]')
-    if [ "$ans" = "yes" ]; then
-      files_to_add=(${files_to_add[@]} "$file")
-      log_message INFO "Selected: $file"
-    else
-      log_message INFO "Skipped: $file"
-    fi
-  done
-  exec 3<&-
-  rm -f .git_temp_status
-
-  if [ ${#files_to_add[@]} -eq 0 ]; then
-    log_message INFO "No files selected."
-    color_cyan "No files chosen for commit."
-    return 1
-  fi
-
-  git add "${files_to_add[@]}"
-  if [ $? -eq 0 ]; then
-    log_message SUCCESS "Added files: ${files_to_add[*]}"
-    color_green "Files staged successfully."
-  else
-    log_message ERROR "git add failed."
-    color_red "git add failed. Exiting."
-    return 2
-  fi
-
-  print_git_status
-  color_cyan "Review STAGED CHANGES to be committed (git diff --cached --stat):"
-  git diff --cached --stat
-  return 0
-}
-
-# Commit staged changes with user-provided or default commit message
-git_commit_changes() {
-  color_cyan "Enter commit message:"
-  read commit_msg
-  [ -z "$commit_msg" ] && commit_msg="Routine update"
-
-  if [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR_EMAIL" ]; then
-    git -c user.name="$GIT_AUTHOR_NAME" -c user.email="$GIT_AUTHOR_EMAIL" commit -m "$commit_msg"
-  else
-    git commit -m "$commit_msg"
-  fi
-
-  if [ $? -eq 0 ]; then
-    log_message SUCCESS "Commit successful."
-    color_green "Commit recorded."
-    return 0
-  else
-    git status | grep -q "nothing to commit" && {
-      log_message INFO "Nothing to commit."
-      color_cyan "Nothing committed."
-      return 1
-    }
-    log_message ERROR "git commit failed."
-    color_red "git commit failed."
-    return 2
-  fi
-}
-
-# Push specified or current branch to origin remote
-git_push_changes() {
-  if [ -z "$1" ]; then
-    color_cyan "Enter branch to push (leave blank for current):"
-    read branch_name
-  else
-    branch_name="$1"
-  fi
-
-  [ -z "$branch_name" ] && branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
-
-  # Switch remote to SSH if not already
-  switch_to_ssh_remote
-
+# Show branches
+show_local_branches() {
   color_cyan "Available branches:"
-  git -C "$PROJECT_PATH" branch
-  git -C "$PROJECT_PATH" show-ref --verify --quiet "refs/heads/$branch_name"
-  if [ $? -ne 0 ]; then
-    log_message ERROR "Branch $branch_name does not exist."
-    color_red "ERROR: Branch '$branch_name' does not exist."
-    color_cyan "Use current branch $(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)? (yes/no)"
-    read yn
-    yn=$(echo "$yn" | tr '[:upper:]' '[:lower:]')
-    if [ "$yn" != "yes" ]; then
-      color_cyan "Push cancelled."
-      log_message INFO "Push cancelled by user."
-      return 1
-    fi
-    branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
-  fi
+  git -C "$PROJECT_PATH" branch -a
+}
 
-  git -C "$PROJECT_PATH" push origin "$branch_name"
+# Show recent commits
+show_branch_log() {
+  branch="$1"
+  color_cyan "Recent commits in branch $branch:"
+  git -C "$PROJECT_PATH" log -n 5 --pretty=format:'%h | %an | %ad | %s' --date=short
+}
+
+# Checkout a branch
+checkout_branch() {
+  branch="$1"
+  git -C "$PROJECT_PATH" checkout "$branch"
   if [ $? -eq 0 ]; then
-    log_message SUCCESS "Pushed origin/$branch_name"
-    color_green "Push completed!"
+    log_message SUCCESS "Checked out branch: $branch"
+    color_green "Checked out branch: $branch"
+    show_branch_log "$branch"
     return 0
   else
-    log_message ERROR "git push failed."
-    color_red "git push failed, see log."
-    return 2
-  fi
-}
-
-# Print commit summary information to the terminal
-print_commit_summary() {
-  sha="$1"; author="$2"; msg="$3"; url="$4"
-  color_cyan "------ Push Verification Summary ------"
-  printf "%-12s : %s\n" "Commit SHA" "$sha"
-  printf "%-12s : %s\n" "Author" "$author"
-  printf "%-12s : %s\n" "Message" "$msg"
-  printf "%-12s : %s\n" "URL" "$url"
-  echo "---------------------------------------"
-}
-
-# Verify that latest pushed commit appears on GitHub via its API
-verify_push_on_github() {
-  if ! command -v jq >/dev/null 2>&1; then
-    color_red "jq not found, skipping verification."
-    log_message ERROR "jq not found."
-    return 1
-  fi
-
-  if [ -z "$GITHUB_TOKEN" ] || [ -z "$REPO_OWNER" ]; then
-    color_red "GITHUB_TOKEN or REPO_OWNER missing, skipping verification."
-    log_message ERROR "Missing GITHUB_TOKEN or REPO_OWNER."
-    return 1
-  fi
-
-  color_cyan "Verifying latest commit on GitHub..."
-  repo_name="$PROJECT_NAME"
-  github_token="$GITHUB_TOKEN"
-  repo_owner="$REPO_OWNER"
-  branch_name="$1"
-
-  response=$(curl -s -H "Authorization: token $github_token" \
-    "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
-  
-  # Log API response silently (no console print)
-  log_message silentINFO "GitHub API response: $response"
-
-  sha=$(echo "$response" | jq -r .commit.sha)
-  msg=$(echo "$response" | jq -r .commit.commit.message)
-  author=$(echo "$response" | jq -r .commit.commit.author.name)
-  commit_url=$(echo "$response" | jq -r .commit.html_url)
-
-  if [ "$sha" != "null" ]; then
-    color_green "Push verified on GitHub!"
-    print_commit_summary "$sha" "$author" "$msg" "$commit_url"
-    log_message SUCCESS "GitHub verification succeeded for commit $sha"
-    return 0
-  else
-    color_red "Could not verify push on GitHub. Please check the log."
-    log_message ERROR "GitHub verification failed: $response"
+    log_message ERROR "Failed to checkout branch: $branch"
+    color_red "Checkout failed for branch: $branch"
     return 1
   fi
 }
 
-# Generate a changelog of the latest commits to a timestamped file
-generate_changelog() {
-  cd "$PROJECT_PATH" || return
-  color_cyan "Generating change log for latest commits."
-  num_entries=10
-  changelog_file="${LOG_DIR}/CHANGELOG_$(date +%Y%m%d_%H%M%S).txt"
-  git log -n "$num_entries" --pretty=format:"%h | %an | %ad | %s" --date=short > "$changelog_file"
-  color_green "Changelog written to $changelog_file"
-}
-
-# Show recent commit summaries in a formatted table with commit info and files changed
-show_recent_changes() {
-  cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
-  color_cyan "How many recent commits do you want to see? (default 5):"
-  read num_commits
-  num_commits=${num_commits:-5}
-  repo_name=$(basename "$PROJECT_PATH")
-  w_project=18; w_commit=20; w_author=14; w_date=10; w_message=34; w_files=100
-
-  printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-  "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-  printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-  "$(printf '%*s' $w_project | tr ' ' '-')" \
-  "$(printf '%*s' $w_commit | tr ' ' '-')" \
-  "$(printf '%*s' $w_author | tr ' ' '-')" \
-  "$(printf '%*s' $w_date | tr ' ' '-')" \
-  "$(printf '%*s' $w_message | tr ' ' '-')" \
-  "$(printf '%*s' $w_files | tr ' ' '-')"
-
-  git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short |
-
-  while IFS='|' read -r short_sha author date message; do
-    files=$(git show --pretty="" --name-only "$short_sha" | paste -sd, -)
-    t_message=$(echo "$message" | cut -c1-$w_message)
-    [ "${#message}" -gt $w_message ] && t_message="$t_message…"
-    t_files=$(echo "$files" | cut -c1-$w_files)
-    [ "${#files}" -gt $w_files ] && t_files="$t_files…"
-
-    printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-    "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
+# Checkout with fallback to main/master
+checkout_branch_with_fallback() {
+  branch="$1"
+  git -C "$PROJECT_PATH" show-ref --verify --quiet "refs/heads/$branch"
+  if [ $? -eq 0 ]; then
+    checkout_branch "$branch"
+    return $?
+  fi
+  color_red "Branch '$branch' does not exist."
+  fallback=""
+  for candidate in "main" "master"; do
+    git -C "$PROJECT_PATH" show-ref --verify --quiet "refs/heads/$candidate"
+    if [ $? -eq 0 ]; then
+      fallback=$candidate
+      break
+    fi
   done
+  if [ -n "$fallback" ]; then
+    color_cyan "Falling back to branch: $fallback"
+    checkout_branch "$fallback"
+    return $?
+  else
+    color_red "Neither 'main' nor 'master' branch found. Cannot checkout."
+    log_message ERROR "No fallback branch (main/master) found."
+    exit 1
+  fi
 }
 
-# Main workflow
 main() {
-  if [ "$#" -lt 1 ]; then
-    color_red "Usage: $0 /path/to/git/project [branch]"
+  # Argument parsing and path handling
+  if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    color_red "Usage: $0 <github_repo_url_or_local_path> [local_path_to_checkout]"
     exit 1
+  fi
+
+  SRC=$1
+  TARGET_PATH=""
+  if [ $# -eq 2 ]; then
+    TARGET_PATH=$2
+  fi
+
+  if is_git_url "$SRC"; then
+    # Clone if necessary
+    if [ -z "$TARGET_PATH" ]; then
+      color_red "Target path required when using a GitHub URL."
+      exit 1
+    fi
+    repo_name=$(basename "$SRC" .git)
+    clone_dir="$TARGET_PATH/$repo_name"
+    if [ -d "$clone_dir/.git" ]; then
+      print "Git repo already exists in $clone_dir, skipping clone."
+    else
+      print "Cloning repo $SRC into $clone_dir ..."
+      mkdir -p "$TARGET_PATH"
+      git clone "$SRC" "$clone_dir"
+      if [ $? -ne 0 ]; then
+        print "Error cloning repo. Exiting."
+        exit 1
+      fi
+    fi
+    PROJECT_PATH="$clone_dir"
+  else
+    # Treat as local path
+    if [ ! -d "$SRC" ]; then
+      color_red "Local path $SRC does not exist."
+      exit 1
+    fi
+    PROJECT_PATH="$SRC"
   fi
 
   load_config
 
-  PROJECT_PATH="$1"
-  USER_BRANCH="$2"
   PROJECT_NAME=$(basename "$PROJECT_PATH")
-  SCRIPT_NAME=$(basename $0)
-  SCRIPT_NAME=${SCRIPT_NAME%.*}
-  LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}/"
-
+  LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}"
   mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
   LOG_FILE="${LOG_DIR}/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
-  color_cyan "Override git author? (leave blank for default, or format 'Name <email>'):"
-  read custom_author
-  if [ -n "$custom_author" ]; then
-    export GIT_AUTHOR_NAME="$(echo $custom_author | sed 's/ *<.*//')"
-    export GIT_AUTHOR_EMAIL="$(echo $custom_author | sed -n 's/.*<\(.*\)>/\1/p')"
-    color_green "Author set for commit: $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>"
-  fi
+  log_message INFO "Starting git checkout for $PROJECT_PATH"
 
-  log_message INFO "Starting git check-in for $PROJECT_PATH"
   check_git_repo
 
-  sel_status=1
-  select_changes_to_add
-  sel_status=$?
+  show_local_branches
 
-  commit_status=1
-  if [ $sel_status -eq 0 ]; then
-    git_commit_changes
-    commit_status=$?
-    if [ $commit_status -eq 0 ]; then
-      print_git_status
-      [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
-      git_push_changes "$USER_BRANCH"
-      verify_push_on_github "$USER_BRANCH"
-      generate_changelog
+  color_cyan "Enter target branch to checkout (leave blank for current branch):"
+  read branch_name
+  branch_name=$(echo "$branch_name" | xargs)
+
+  if [ -z "$branch_name" ]; then
+    branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD 2>/dev/null)
+    if [ -z "$branch_name" ]; then
+      branch_name="master"
+      color_cyan "No current branch detected, defaulting to 'master'."
+    else
+      color_cyan "No input given, defaulting to current branch: $branch_name"
     fi
   fi
 
-  color_cyan "Would you like to see recent commit summaries? (yes/no)"
-  read answer
-  answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
-  if [ "$answer" = "yes" ]; then
-    show_recent_changes
+  current_branch=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD 2>/dev/null)
+  if [ "$branch_name" = "$current_branch" ]; then
+    status=$(git -C "$PROJECT_PATH" status --porcelain)
+    remote_status=$(git -C "$PROJECT_PATH" status | grep "up to date" | wc -l)
+    if [ -z "$status" ] && [ "$remote_status" -ne 0 ]; then
+      color_green "Already on branch '$current_branch' and working tree is clean/up to date!"
+      log_message INFO "Already up to date. No changes."
+      exit 0
+    fi
   fi
 
-  log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
+  untracked_files=$(git -C "$PROJECT_PATH" ls-files --others --exclude-standard)
+  if [ -n "$untracked_files" ]; then
+    color_cyan "Note: These new/untracked files will remain after checkout:"
+    print "$untracked_files"
+  fi
+
+  dirty_status=$(git -C "$PROJECT_PATH" status --porcelain)
+  if [ -n "$dirty_status" ]; then
+    color_cyan "You have unstaged or uncommitted changes to tracked files:"
+    git -C "$PROJECT_PATH" status --short
+    color_cyan "Preview diff before switching branch:"
+    git -C "$PROJECT_PATH" diff --stat
+    color_cyan "Attempting to stash changes before checkout..."
+    git -C "$PROJECT_PATH" stash push -m "autostash before branch switch" >/dev/null
+    if [ $? -eq 0 ]; then
+      color_green "Local changes stashed successfully."
+    else
+      color_red "Failed to stash local changes. Aborting checkout."
+      log_message ERROR "Stash failed; aborting checkout"
+      exit 1
+    fi
+  fi
+
+  checkout_branch_with_fallback "$branch_name"
+  checkout_status=$?
+
+  if [ "$checkout_status" -eq 0 ]; then
+    stash_list=$(git -C "$PROJECT_PATH" stash list)
+    echo "$stash_list" | grep -q "autostash before branch switch"
+    if [ $? -eq 0 ]; then
+      color_cyan "Applying previously stashed changes..."
+      git -C "$PROJECT_PATH" stash pop
+      if [ $? -eq 0 ]; then
+        color_green "Stash applied cleanly."
+      else
+        color_red "Stash apply had conflicts; please resolve manually."
+        log_message ERROR "Stash apply conflicts"
+      fi
+    fi
+  fi
+
+  log_message SUCCESS "Completed git checkout for $PROJECT_PATH"
 }
 
-# Run the main function
 main "$@"
