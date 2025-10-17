@@ -74,7 +74,7 @@ print_git_status() {
 select_changes_to_add() {
     typeset -a files_to_add
     cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; return 1; }
-    print_git_status
+    #print_git_status
 
     git status --porcelain -z > .git_temp_status
     if [ ! -s .git_temp_status ]; then
