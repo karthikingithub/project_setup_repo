@@ -22,23 +22,26 @@ LOG_FILE=""
 
 # --------- Load GitHub token from config.env if not in env ---------
 load_github_token() {
+    # LOG_FILE assumed to be set before this call
+    
     if [ -z "$GITHUB_TOKEN" ]; then
         if [ -f "$HOME/config.env" ]; then
-            # Load config.env contents safely
+            # shellcheck source=/dev/null
             . "$HOME/config.env"
-            if [ -z "$GITHUB_TOKEN" ]; then
-                color_red "WARNING: GITHUB_TOKEN not found in $HOME/config.env"
-            else
+            if [ -n "$GITHUB_TOKEN" ]; then
                 log_message INFO "Loaded GITHUB_TOKEN from $HOME/config.env"
+            else
+                log_message ERROR "GITHUB_TOKEN not found in $HOME/config.env"
+                color_red "WARNING: GITHUB_TOKEN not found in $HOME/config.env"
             fi
         else
-            color_red "WARNING: $HOME/config.env not found. GITHUB_TOKEN not set."
+            log_message ERROR "$HOME/config.env not found, GITHUB_TOKEN not set"
+            color_red "WARNING: $HOME/config.env not found and GITHUB_TOKEN not set"
         fi
     else
         log_message INFO "Using GITHUB_TOKEN from environment"
     fi
 }
-
 # --------- Color Helper Functions ---------
 color_green() { tput setaf 2; print "$1"; tput sgr0; }
 color_red() { tput setaf 1; print "$1"; tput sgr0; }
@@ -245,28 +248,24 @@ main() {
         exit 1
     fi
 
-    load_github_token
-
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
     PROJECT_NAME=$(basename "$PROJECT_PATH")
+    
     timestamp=$(date +%Y%m%d_%H%M%S)
     LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_${timestamp}.log"
+
+    # Load token AFTER LOG_FILE is set
+    load_github_token
 
     log_message INFO "Starting Git interactive check-in for $PROJECT_PATH"
 
     check_git_repo
-
     print_git_status
-
     select_changes_to_add
-
     git_commit_changes
-
     git_push_changes "$USER_BRANCH"
-
     verify_push_on_github "$USER_BRANCH"
-
     log_message SUCCESS "Git check-in and push cycle completed for $PROJECT_PATH"
 }
 
