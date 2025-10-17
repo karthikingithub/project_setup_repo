@@ -222,18 +222,42 @@ verify_push_on_github() {
 
 show_recent_changes() {
     cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
-    color_cyan "How many recent commits do you want to see? (enter a number, default 5):"
+    color_cyan "Enter number of recent commits to show (default 5):"
     read num_commits
     num_commits=${num_commits:-5}
 
-    # Header row
-    printf "%-8s | %-40s | %-20s | %-30s\n" "Commit" "Author" "Date" "Message"
-    printf -- "----------------------------------------------------------------------------------------------\n"
+    repo_name=$(basename "$PROJECT_PATH")
 
-    # Fetch git log, limit to num_commits entries, formatting output
-    git log -n "$num_commits" --pretty=format:"%h | %an | %ad | %s" --date=short | while IFS= read -r line; do
-        printf "%s\n" "$line"
-    done
+    # Header row
+    printf "%-12s | %-15s | %-10s | %-20s | %-40s | %-30s\n" "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+    printf -- "--------------------------------------------------------------------------------------------------------------------------------------------\n"
+
+    # Fetch log with custom format, files changed, parent commit SHAs for history
+    git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s|%P" --date=short --name-only | awk -v proj="$repo_name" '
+    BEGIN {
+        FS="|"
+        OFS=" | "
+    }
+    /^[0-9a-f]{7}/ {
+        commit=$1; author=$2; date=$3; msg=$4; parents=$5
+        files=""
+        getline
+        while ($0 != "" && $0 !~ /^[0-9a-f]{7}/) {
+            files = files $0 ", "
+            getline
+        }
+        # remove trailing comma space if any
+        sub(/, $/, "", files)
+        # print all details
+        printf "%-12s | %-15s | %-10s | %-20s | %-40s | %-30s\n", proj, commit, author, date, msg, files
+        if($0 ~ /^[0-9a-f]{7}/) {
+            # line matched next commit so process it in next loop iteration
+            # simulate reprocessing line by going back one line
+            close("getline")
+            print ""
+            # No need to ungetline in awk, replacement done via getline already
+        }
+    }'
 }
 
 
