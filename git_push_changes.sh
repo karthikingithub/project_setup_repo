@@ -222,7 +222,7 @@ verify_push_on_github() {
 
 show_recent_changes() {
     cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
-    color_cyan "Enter number of recent commits to show (default 5):"
+    color_cyan "Enter the number of recent commits to show (default 5):"
     read num_commits
     num_commits=${num_commits:-5}
 
@@ -230,45 +230,46 @@ show_recent_changes() {
 
     # Print header
     printf "%-18s | %-10s | %-15s | %-10s | %-40s | %s\n" "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-    printf -- "---------------------------------------------------------------------------------------------------------------------------------------\n"
+    printf -- "-----------------------------------------------------------------------------------------------------------------------------------\n"
 
-    # Get formatted log with files, using null byte as separator for files
-    IFS=''
-    git log -n "$num_commits" --pretty=format:"%H%x00%h%x00%an%x00%ad%x00%s" --date=short --name-only -z | \
-    {
-        read -r -d $'\0' full_sha
-        while [ -n "$full_sha" ]; do
-            read -r -d $'\0' short_sha
-            read -r -d $'\0' author
-            read -r -d $'\0' date
-            read -r -d $'\0' message
+    # Fetch git log data with null delimiters
+    git log -n "$num_commits" --pretty=format:"%H%x00%h%x00%an%x00%ad%x00%s" --date=short --name-only -z | {
+        # read one commit record at a time
+        while true; do
+            read -r -d $'\0' full_sha || break
+            read -r -d $'\0' short_sha || break
+            read -r -d $'\0' author || break
+            read -r -d $'\0' date || break
+            read -r -d $'\0' message || break
 
-            # Collect files for this commit until next commit SHA or EOF
+            # Collect changed files
             files=""
-            while :; do
-                read -r -d $'\0' line || break
-                if [ "${#line}" -eq 40 ] && echo "$line" | grep -qE '^[0-9a-f]{40}$'; then
-                    # Next commit SHA, break to next iteration
-                    full_sha="$line"
+            while IFS= read -r -d $'\0' file; do
+                # If the file looks like a SHA (40 hex chars), it's the next commit's full_sha
+                if [ ${#file} -eq 40 ] && echo "$file" | grep -qE '^[0-9a-f]{40}$'; then
+                    # Store for next iteration and break
+                    next_commit_sha="$file"
                     break
-                else
-                    if [ -n "$line" ]; then
-                        files="$files$line, "
-                    fi
                 fi
+                files="${files}${file}, "
             done
-
-            # Cleanup trailing comma and space on files
-            files=$(echo "$files" | sed 's/, $//')
+            # Remove trailing ", " from files string
+            files=${files%, }
 
             printf "%-18s | %-10s | %-15s | %-10s | %-40s | %s\n" \
                 "$repo_name" "$short_sha" "$author" "$date" "$message" "$files"
 
-            # If EOF, no more commits
-            [ -z "$full_sha" ] && break
+            # If we detected next commit sha, loop with it
+            if [ -n "$next_commit_sha" ]; then
+                full_sha="$next_commit_sha"
+                unset next_commit_sha
+            else
+                break
+            fi
         done
     }
 }
+
 
 
 
@@ -307,4 +308,3 @@ main() {
 }
 
 main "$@"
-
