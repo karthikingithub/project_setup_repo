@@ -228,37 +228,48 @@ show_recent_changes() {
 
     repo_name=$(basename "$PROJECT_PATH")
 
-    # Header row
-    printf "%-12s | %-15s | %-10s | %-20s | %-40s | %-30s\n" "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-    printf -- "--------------------------------------------------------------------------------------------------------------------------------------------\n"
+    # Print header
+    printf "%-18s | %-10s | %-15s | %-10s | %-40s | %s\n" "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+    printf -- "---------------------------------------------------------------------------------------------------------------------------------------\n"
 
-    # Fetch log with custom format, files changed, parent commit SHAs for history
-    git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s|%P" --date=short --name-only | awk -v proj="$repo_name" '
-    BEGIN {
-        FS="|"
-        OFS=" | "
+    # Get formatted log with files, using null byte as separator for files
+    IFS=''
+    git log -n "$num_commits" --pretty=format:"%H%x00%h%x00%an%x00%ad%x00%s" --date=short --name-only -z | \
+    {
+        read -r -d $'\0' full_sha
+        while [ -n "$full_sha" ]; do
+            read -r -d $'\0' short_sha
+            read -r -d $'\0' author
+            read -r -d $'\0' date
+            read -r -d $'\0' message
+
+            # Collect files for this commit until next commit SHA or EOF
+            files=""
+            while :; do
+                read -r -d $'\0' line || break
+                if [ "${#line}" -eq 40 ] && echo "$line" | grep -qE '^[0-9a-f]{40}$'; then
+                    # Next commit SHA, break to next iteration
+                    full_sha="$line"
+                    break
+                else
+                    if [ -n "$line" ]; then
+                        files="$files$line, "
+                    fi
+                fi
+            done
+
+            # Cleanup trailing comma and space on files
+            files=$(echo "$files" | sed 's/, $//')
+
+            printf "%-18s | %-10s | %-15s | %-10s | %-40s | %s\n" \
+                "$repo_name" "$short_sha" "$author" "$date" "$message" "$files"
+
+            # If EOF, no more commits
+            [ -z "$full_sha" ] && break
+        done
     }
-    /^[0-9a-f]{7}/ {
-        commit=$1; author=$2; date=$3; msg=$4; parents=$5
-        files=""
-        getline
-        while ($0 != "" && $0 !~ /^[0-9a-f]{7}/) {
-            files = files $0 ", "
-            getline
-        }
-        # remove trailing comma space if any
-        sub(/, $/, "", files)
-        # print all details
-        printf "%-12s | %-15s | %-10s | %-20s | %-40s | %-30s\n", proj, commit, author, date, msg, files
-        if($0 ~ /^[0-9a-f]{7}/) {
-            # line matched next commit so process it in next loop iteration
-            # simulate reprocessing line by going back one line
-            close("getline")
-            print ""
-            # No need to ungetline in awk, replacement done via getline already
-        }
-    }'
 }
+
 
 
 
@@ -296,3 +307,4 @@ main() {
 }
 
 main "$@"
+
