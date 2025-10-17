@@ -9,8 +9,6 @@
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
 
-LOG_BASE_DIR="/media/karthik/WD-HDD/Learning/labs/log/${SCRIPT_NAME}"
-mkdir -p "$LOG_BASE_DIR" || { print "ERROR: Failed to create log directory: $LOG_BASE_DIR"; exit 1; }
 
 PROJECT_PATH=""
 PROJECT_NAME=""
@@ -55,6 +53,18 @@ confirm_deletion() {
     fi
 }
 
+load_config() {
+    if [ ! -f "$HOME/config.env" ]; then
+        print "ERROR: Config file $HOME/config.env missing. Cannot proceed."
+        exit 1
+    fi
+    . "$HOME/config.env"
+    if [ -z "$LOG_BASE_DIR" ]; then
+        print "ERROR: LOG_BASE_DIR not set in config."
+        exit 1
+    fi
+}
+
 # ------ Cleanup Function ------
 cleanup_project_dir() {
     dir_path="$1"
@@ -87,9 +97,12 @@ main() {
     project_name="$2"
     PROJECT_PATH="${target_path%/}/$project_name"
     PROJECT_NAME="$project_name"
-
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_cleanup_${timestamp}.log"
+	
+	load_config
+	
+	LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}"
+	mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
+	LOG_FILE="${LOG_DIR}/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
     log_message INFO "Starting cleanup for project: $PROJECT_NAME at $PROJECT_PATH"
 

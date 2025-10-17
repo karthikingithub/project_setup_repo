@@ -308,9 +308,9 @@ main() {
 	SCRIPT_NAME=$(basename $0)
 	SCRIPT_NAME=${SCRIPT_NAME%.*}
 	
-	LOG_DIR="${LOG_BASE_DIR}/${PROJECT_NAME}/${SCRIPT_NAME}"
+	LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}/"
 	mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
-	LOG_FILE="${LOG_DIR}/${SCRIPT_NAME}_$(date +%Y%m%d_%H%M%S).log"
+	LOG_FILE="${LOG_DIR}/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
     color_cyan "Override git author? (leave blank for default, or format 'Name <email>'):"
     read custom_author

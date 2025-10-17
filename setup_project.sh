@@ -144,6 +144,20 @@ create_key_files() {
     done
 }
 
+
+load_config() {
+    if [ ! -f "$HOME/config.env" ]; then
+        print "ERROR: Config file $HOME/config.env missing. Cannot proceed."
+        exit 1
+    fi
+    . "$HOME/config.env"
+    if [ -z "$LOG_BASE_DIR" ]; then
+        print "ERROR: LOG_BASE_DIR not set in config."
+        exit 1
+    fi
+}
+
+
 # ---------------- .gitignore Setup ----------------
 # Ensures 'venv/' is listed in .gitignore for excluding python virtual env
 setup_gitignore() {
@@ -259,8 +273,12 @@ main() {
     PROJECT_NAME="$project_name"
 
     # Construct log file path including script name, project name, and timestamp
-    timestamp=$(date +%Y%m%d_%H%M%S)
-    LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_${timestamp}.log"
+	load_config
+	
+	LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}/"
+	mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
+	LOG_FILE="${LOG_DIR}/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
+	
 
     log_message INFO "Starting setup for project: $PROJECT_NAME at $PROJECT_PATH"
 
