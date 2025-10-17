@@ -6,8 +6,8 @@
 # Interactive git add/commit/push script.
 # Reads GITHUB_TOKEN and REPO_OWNER from $HOME/config.env.
 # Uses 'jq' for JSON parsing.
-# Prints pretty summary table for commits.
-# Robust logging and error handling.
+# Logs detailed API responses to logfile only.
+# Prints concise commit summary to console.
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
@@ -20,6 +20,7 @@ PROJECT_NAME=""
 USER_BRANCH=""
 LOG_FILE=""
 REPO_OWNER=""
+GITHUB_TOKEN=""
 
 load_config() {
     if [ -f "$HOME/config.env" ]; then
@@ -201,7 +202,6 @@ print_commit_summary() {
     msg="$3"
     url="$4"
 
-    # Pretty print a table (simple)
     print ""
     color_cyan "------ Push Verification Summary ------"
     printf "%-10s : %s\n" "Commit SHA" "$sha"
@@ -213,11 +213,30 @@ print_commit_summary() {
 }
 
 verify_push_on_github() {
-    ...
+    if ! command -v jq >/dev/null 2>&1; then
+        color_red "jq is not installed. Skipping GitHub verification."
+        log_message ERROR "jq not installed, skipping GitHub verification."
+        return
+    fi
+
+    if [ -z "$GITHUB_TOKEN" ] || [ -z "$REPO_OWNER" ]; then
+        color_red "ERROR: GITHUB_TOKEN or REPO_OWNER not set. Skipping GitHub verification."
+        log_message ERROR "GITHUB_TOKEN or REPO_OWNER not set. Skipping GitHub verification."
+        return
+    fi
+
+    print ""
+    color_cyan "Verifying latest commit on GitHub..."
+
+    repo_name="$PROJECT_NAME"
+    github_token="$GITHUB_TOKEN"
+    repo_owner="$REPO_OWNER"
+    branch_name="$1"
+
     response=$(curl -s -H "Authorization: token $github_token" \
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
-    # Log full API response quietly (no print)
+    # Log verbose response only (no console output)
     log_message INFO "GitHub API response: $response"
 
     sha=$(echo "$response" | jq -r .commit.sha)
@@ -234,7 +253,6 @@ verify_push_on_github() {
         log_message ERROR "GitHub commit verification failed. Response: $response"
     fi
 }
-
 
 main() {
     if [ "$#" -lt 1 ]; then
