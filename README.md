@@ -127,7 +127,7 @@ Open issues or submit pull requests for improvements, bug fixes, or new features
 
 ## Maintainer
 
-Karthik KN.
+Karthik KN
 
 ---
 
