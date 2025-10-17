@@ -46,17 +46,27 @@ color_red()   { tput setaf 1; print "$1"; tput sgr0; }
 color_cyan()  { tput setaf 6; print "$1"; tput sgr0; }
 
 log_message() {
-    level=$1; shift
+    level=$1
+    shift
     msg=$*
+    silent=0
+    if [[ "$level" == silent* ]]; then
+        level=${level#silent}
+        silent=1
+    fi
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     print "$timestamp [$level] $msg" >> "$LOG_FILE"
+    if [ "$silent" -eq 1 ]; then
+        return
+    fi
     case "$level" in
         SUCCESS) color_green "$msg" ;;
         ERROR) color_red "$msg" ;;
         INFO) color_cyan "$msg" ;;
-        *) print "$msg" ;;
+        *) print "$msg";;
     esac
 }
+
 
 check_git_repo() {
     if [ ! -d "$PROJECT_PATH/.git" ]; then
@@ -192,7 +202,8 @@ verify_push_on_github() {
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
     # Log API response ONLY
-    log_message INFO "GitHub API response: $response"
+    log_message silentINFO "GitHub API response: $response"
+
 
     sha=$(echo "$response" | jq -r .commit.sha)
     msg=$(echo "$response" | jq -r .commit.commit.message)
