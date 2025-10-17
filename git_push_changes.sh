@@ -6,8 +6,8 @@
 # Interactive git add/commit/push script.
 # Reads GITHUB_TOKEN and REPO_OWNER from $HOME/config.env.
 # Uses 'jq' for JSON parsing.
-# Logs detailed API responses to logfile only.
-# Prints concise commit summary to console.
+# Logs verbose API responses silently.
+# Prints concise output on console.
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
@@ -91,7 +91,6 @@ select_changes_to_add() {
     fi
 
     color_cyan "---------- FILES FOR ADD ----------"
-
     exec 3<.git_temp_status
     while IFS= read -r -u 3 -d '' entry; do
         status="${entry:0:2}"
@@ -225,7 +224,6 @@ verify_push_on_github() {
         return
     fi
 
-    print ""
     color_cyan "Verifying latest commit on GitHub..."
 
     repo_name="$PROJECT_NAME"
@@ -236,7 +234,7 @@ verify_push_on_github() {
     response=$(curl -s -H "Authorization: token $github_token" \
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
-    # Log verbose response only (no console output)
+    # Log verbose response but do NOT print to console
     log_message INFO "GitHub API response: $response"
 
     sha=$(echo "$response" | jq -r .commit.sha)
@@ -270,11 +268,8 @@ main() {
     log_message INFO "Starting Git interactive check-in for $PROJECT_PATH"
 
     check_git_repo
-
     print_git_status
-
     select_changes_to_add
-
     git_commit_changes
 
     if [ -z "$USER_BRANCH" ]; then
@@ -282,7 +277,6 @@ main() {
     fi
 
     git_push_changes "$USER_BRANCH"
-
     verify_push_on_github "$USER_BRANCH"
 
     log_message SUCCESS "Git check-in and push cycle completed for $PROJECT_PATH"
