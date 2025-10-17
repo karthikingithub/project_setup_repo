@@ -1,15 +1,13 @@
 #!/bin/ksh
 
-
-#
 # Usage:
 #   ./git_push_changes.sh /path/to/project/project_name [branch]
 #
 # Interactive git add/commit/push script.
-# Reads GITHUB_TOKEN and REPO_OWNER from $HOME/config.env (if available).
-# Repository name is derived from project folder name.
-# Uses 'jq' for JSON parsing to verify push on GitHub.
-# Comprehensive logging, robust error handling, and user prompts.
+# Reads GITHUB_TOKEN and REPO_OWNER from $HOME/config.env.
+# Uses 'jq' for JSON parsing.
+# Prints pretty summary table for commits.
+# Robust logging and error handling.
 
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
@@ -25,21 +23,19 @@ REPO_OWNER=""
 
 load_config() {
     if [ -f "$HOME/config.env" ]; then
-        # shellcheck source=/dev/null
         . "$HOME/config.env"
         log_message INFO "Loaded config from $HOME/config.env"
     else
-        color_red "WARNING: $HOME/config.env not found. Please create it to set environment variables."
+        color_red "WARNING: $HOME/config.env not found. Please create it."
         log_message ERROR "$HOME/config.env not found."
     fi
 
-    # Validate required env variables
     if [ -z "$GITHUB_TOKEN" ]; then
-        color_red "WARNING: GITHUB_TOKEN is not set in environment or config.env."
+        color_red "WARNING: GITHUB_TOKEN is not set."
         log_message ERROR "GITHUB_TOKEN not set."
     fi
     if [ -z "$REPO_OWNER" ]; then
-        color_red "WARNING: REPO_OWNER is not set in environment or config.env."
+        color_red "WARNING: REPO_OWNER is not set."
         log_message ERROR "REPO_OWNER not set."
     fi
 }
@@ -199,6 +195,23 @@ git_push_changes() {
     fi
 }
 
+print_commit_summary() {
+    sha="$1"
+    author="$2"
+    msg="$3"
+    url="$4"
+
+    # Pretty print a table (simple)
+    print ""
+    color_cyan "------ Push Verification Summary ------"
+    printf "%-10s : %s\n" "Commit SHA" "$sha"
+    printf "%-10s : %s\n" "Author" "$author"
+    printf "%-10s : %s\n" "Message" "$msg"
+    printf "%-10s : %s\n" "URL" "$url"
+    print "---------------------------------------"
+    print ""
+}
+
 verify_push_on_github() {
     if ! command -v jq >/dev/null 2>&1; then
         color_red "jq is not installed. Skipping GitHub push verification."
@@ -232,11 +245,7 @@ verify_push_on_github() {
 
     if [ "$sha" != "null" ]; then
         color_green "Push verified on GitHub!"
-        color_cyan "Latest commit on $repo_name ($branch_name):"
-        print "SHA: $sha"
-        print "Author: $author"
-        print "Message: $msg"
-        print "URL: $commit_url"
+        print_commit_summary "$sha" "$author" "$msg" "$commit_url"
         log_message SUCCESS "GitHub verification passed for commit $sha ($msg)"
     else
         color_red "Could not verify push on GitHub. Please check manually."
@@ -250,12 +259,12 @@ main() {
         exit 1
     fi
 
+    load_config
+
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
     PROJECT_NAME=$(basename "$PROJECT_PATH")
     LOG_FILE="${LOG_BASE_DIR}/${SCRIPT_NAME}_${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
-
-    load_config
 
     log_message INFO "Starting Git interactive check-in for $PROJECT_PATH"
 
