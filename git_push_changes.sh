@@ -213,30 +213,11 @@ print_commit_summary() {
 }
 
 verify_push_on_github() {
-    if ! command -v jq >/dev/null 2>&1; then
-        color_red "jq is not installed. Skipping GitHub push verification."
-        log_message ERROR "jq not installed, skipping GitHub verification."
-        return
-    fi
-
-    if [ -z "$GITHUB_TOKEN" ] || [ -z "$REPO_OWNER" ]; then
-        color_red "ERROR: GITHUB_TOKEN or REPO_OWNER is not set. Skipping GitHub verify."
-        log_message ERROR "GITHUB_TOKEN or REPO_OWNER not set. Skipping GitHub verify."
-        return
-    fi
-
-    print ""
-    color_cyan "Verifying latest commit on GitHub..."
-
-    repo_name="$PROJECT_NAME"
-    github_token="$GITHUB_TOKEN"
-    repo_owner="$REPO_OWNER"
-    branch_name="$1"
-
+    ...
     response=$(curl -s -H "Authorization: token $github_token" \
       "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
-    # Log the full API response quietly; no console print so output is clean
+    # Log full API response quietly (no print)
     log_message INFO "GitHub API response: $response"
 
     sha=$(echo "$response" | jq -r .commit.sha)
