@@ -256,23 +256,34 @@ show_recent_changes() {
     read num_commits
     num_commits=${num_commits:-5}
     repo_name=$(basename "$PROJECT_PATH")
+    # Column widths
+    # Define the width for each column
+w_project=18; w_commit=8; w_author=14; w_date=10; w_message=34; w_files=30
 
-    # Print header
-	printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" \
-	  "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-	printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" \
-	  "------------------" "--------" "--------------" "----------" "----------------------------------" "------------------------------"
+# Header - pad every string to column width
+printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
+  "Project" "Commit" "Author" "Date" "Message" "Files Changed"
 
+# Separator - fill each with dashes, not header length
+printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
+  "$(printf '%*s' $w_project | tr ' ' '-')" \
+  "$(printf '%*s' $w_commit | tr ' ' '-')" \
+  "$(printf '%*s' $w_author | tr ' ' '-')" \
+  "$(printf '%*s' $w_date | tr ' ' '-')" \
+  "$(printf '%*s' $w_message | tr ' ' '-')" \
+  "$(printf '%*s' $w_files | tr ' ' '-')"
 
-    git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short | while IFS='|' read -r short_sha author date message; do
-        # Get file list for this commit only
+    # Data rows
+    git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short |
+    while IFS='|' read -r short_sha author date message; do
         files=$(git show --pretty="" --name-only "$short_sha" | paste -sd, -)
         # Truncate long fields for neat display
-        t_message=$(echo "$message" | cut -c1-34)
-        [ "${#message}" -gt 34 ] && t_message="$t_message…"
-        t_files=$(echo "$files" | cut -c1-30)
-        [ "${#files}" -gt 30 ] && t_files="$t_files…"
-        printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
+        t_message=$(echo "$message" | cut -c1-$w_message)
+        [ "${#message}" -gt $w_message ] && t_message="$t_message…"
+        t_files=$(echo "$files" | cut -c1-$w_files)
+        [ "${#files}" -gt $w_files ] && t_files="$t_files…"
+        printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
+          "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
     done
 }
 
