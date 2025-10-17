@@ -272,7 +272,7 @@ show_recent_changes() {
     read num_commits
     num_commits=${num_commits:-5}
     repo_name=$(basename "$PROJECT_PATH")
-    w_project=18; w_commit=8; w_author=14; w_date=10; w_message=34; w_files=30
+    w_project=18; w_commit=20; w_author=14; w_date=10; w_message=34; w_files=100
     printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
       "Project" "Commit" "Author" "Date" "Message" "Files Changed"
     printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
