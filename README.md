@@ -11,64 +11,114 @@
 
 ## Overview
 
-This repository contains Korn shell (`ksh`) scripts designed for efficient setup and cleanup of standardized project environments.
-Suitable for data engineering, AI workflows, or software projects, it includes:
+This repository contains Korn shell (`ksh`) scripts designed for efficient setup, management, and cleanup of standardized project environments tailored for data engineering, AI workflows, or software projects. The key scripts automate common tasks with robust logging, colorized terminal output, and user-friendly interactive prompts.
 
-- Modular creation of comprehensive project folder structures with helpful `README.txt` files.
-- Initialization of essential root files: `README.md`, `requirements.txt`, `.gitignore`, `.env.example`, `CHANGELOG.md`.
-- Python virtual environment (`venv`) setup integrated with `.gitignore`.
-- Detailed, timestamped logs with color-coded console outputs and robust error handling.
-- Safe script re-execution support.
-- User confirmation before any destructive cleanup.
+### Key Features Across Scripts
+
+- Modular creation of comprehensive project folder structures with detailed `README.txt` files for clarity.
+- Initialization of essential root files including `README.md`, `requirements.txt`, `.gitignore`, `.env.example`, and `CHANGELOG.md`.
+- Python virtual environment (`venv`) setup fully integrated and excluded in `.gitignore`.
+- Interactive Git management: staging, committing, and pushing with GitHub API verification.
+- Safe cleanup workflows with user confirmation and thorough logging.
+- Safe to rerun any script without overwriting existing content accidentally.
+- Timestamped log files maintained in configurable directories.
 
 ---
 
-## Git Automation Script: `git_push_changes.sh`
+## Script Details
 
-### Key Features
+### `setup_project.sh`
 
-- Interactive file staging, prompting per modified file.
-- Preview of unstaged and staged diffs for review before commit.
-- On-the-fly commit author override for flexible identity management.
-- Conditional safe push to remote only if commits exist.
-- GitHub API-based push verification using personal access tokens.
-- Automated generation of changelog files after successful push.
-- Optional display of recent commits summary in a clean tabular format.
-- Configurable logs directory structure organized by project.
+- Creates a full project folder structure including subdirectories for `src`, `data`, `scripts`, `config`, `tests`, `docs`, `agents`, `workflows`, and many others.
+- Populates each directory with helpful `README.txt` describing its purpose.
+- Sets up basic key files at the project root if missing.
+- Initializes a Python virtual environment (`venv`) within the project and configures `.gitignore` accordingly.
+- Handles folder permissions and logs all setup actions.
+
+---
+
+### `cleanup_project.sh`
+
+- Safely deletes an entire project directory tree after explicit user confirmation.
+- Checks for directory existence before deletion.
+- Logs every step including user responses and deletion outcomes.
+- Prevents accidental removal by requiring a typed confirmation (`yes`).
+
+---
+
+### `cleanup_old_logs.sh`
+
+- Recursively deletes log files older than 60 days under the configured centralized log directory.
+- Identifies empty directories inactive for 60 or more days and prompts user whether to delete them.
+- Logs every deletion attempt and user decision for audit purposes.
+- Requires `LOG_BASE_DIR` environment variable configured via `$HOME/config.env`.
+
+---
+
+### `git_checkout.sh`
+
+- Facilitates switching Git branches safely within a project repository.
+- Validates repository status and existence of branches.
+- Lists available local and remote branches for user reference.
+- Handles stashing and reapplying uncommitted changes during branch switches.
+- Falls back to common default branches like `main` or `master` if the requested branch is unavailable.
+- Provides recent commit logs of checked out branch for quick context.
+
+---
+
+### `git_push_changes.sh`
+
+- Streamlines the process of staging, committing, and pushing Git changes interactively.
+- Prompts users per changed file for staging selection.
+- Allows commit message input and optional author override.
+- Performs safe push operations to the remote repository.
+- Verifies pushed commits via GitHub API using configured personal access tokens.
+- Generates changelogs automatically after successful pushes.
+- Optionally shows recent commit summaries in a formatted table for quick review.
 
 ---
 
 ## Usage
 
-### Project Setup
+Make scripts executable first:
 
-chmod +x setup_project.sh
+chmod +x setup_project.sh cleanup_project.sh cleanup_old_logs.sh git_checkout.sh git_push_changes.sh
+
+
+Example commands:
+
+- Set up a new project:
+
+
 ./setup_project.sh /your/target/path your_project_name
 
 
-### Cleanup Project
+- Clean up a project directory:
 
-chmod +x cleanup_project.sh
 ./cleanup_project.sh /your/target/path your_project_name
 
 
-### Git Commit and Push Automation
+- Clean old logs:
 
-chmod +x git_push_changes.sh
+./cleanup_old_logs.sh
+
+
+- Switch Git branches safely:
+
+./git_checkout.sh /absolute/path/to/your/project
+
+
+- Commit and push changes with interactive prompts:
+
 ksh git_push_changes.sh /absolute/path/to/your/project
 
-
-Follow the interactive prompts for author override, file staging, commit message, and optional commit summaries.
 
 ---
 
 ## Configuration
 
-Create `$HOME/config.env` with:
+Ensure `$HOME/config.env` is set up with the following environment variables:
 
----
-
-## Example Output Snippets
 
 
 export LOG_BASE_DIR="/media/karthik/WD-HDD/Learning/labs/log"
@@ -76,52 +126,29 @@ export REPO_OWNER="your_github_username"
 export GITHUB_TOKEN="your_personal_access_token"
 
 
-
----
-
-## Example Output Snippets
-
-
-Override git author? (leave blank for default, or format 'Name <email>'):
-John Doe john@example.com
-
-Preview of Uncommitted Changes (git diff --stat):
-myscript.sh | 12 +++++-----
-1 file changed, 7 insertions(+), 5 deletions(-)
-
-Stage? [ M] myscript.sh
-Add this file? (yes/no): yes
-
-Enter commit message:
-Fixed critical parsing bug
-
-Push completed!
-Push verified on GitHub!
-Generating change log for latest commits.
-Changelog written to /media/karthik/WD-HDD/Learning/labs/log/myproject/CHANGELOG_20251017_120000.txt
-
-
 ---
 
 ## Logging
 
-Logs for all scripts reside in:
+All scripts create timestamped logs stored at:
 
 
-$LOG_BASE_DIR/<project_name>/
+$LOG_BASE_DIR/<script_name>/<project_name>_<timestamp>.log
 
 
-Typical files:
+Typical log files include:
 
-- `setup_project_testproject_YYYYMMDD_HHMMSS.log`
-- `cleanup_project_testproject_YYYYMMDD_HHMMSS.log`
-- `git_push_changes_YYYYMMDD_HHMMSS.log`
+- `setup_project_<project_name>_YYYYMMDD_HHMMSS.log`
+- `cleanup_project_<project_name>_YYYYMMDD_HHMMSS.log`
+- `cleanup_old_logs_YYYYMMDD_HHMMSS.log`
+- `git_checkout_<project_name>_YYYYMMDD_HHMMSS.log`
+- `git_push_changes_<project_name>_YYYYMMDD_HHMMSS.log`
 
 ---
 
 ## Contribution
 
-Open issues or submit pull requests for improvements, bug fixes, or new features. Your feedback and contributions are welcome.
+Please open issues or submit pull requests for improvements, bug fixes, or new features. Contributions and feedback are welcome.
 
 ---
 
@@ -131,6 +158,7 @@ Karthik KN
 
 ---
 
-Thank you for using these scripts! Feel free to customize to your organizational needs.
+Thank you for using these scripts! Feel free to customize them for your organizational workflows and project requirements.
+
 
 

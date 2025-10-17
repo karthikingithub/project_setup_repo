@@ -1,5 +1,32 @@
 #!/bin/ksh
 
+# Script Name: git_push_changes.sh
+#
+# Purpose:
+#   This script automates the process of staging, committing, and pushing changes
+#   to a Git repository. It supports interactive selection of files to stage,
+#   custom commit messages, and pushes to a specified or current branch.
+#   Includes logging and color-coded terminal output for user feedback.
+#   It verifies push success via GitHub API if configured, and can display
+#   recent commit summaries as a changelog.
+#
+# Usage:
+#   ./git_push_changes.sh /path/to/git/project [branch]
+#
+# Requirements:
+#   - $HOME/config.env must exist and define:
+#       LOG_BASE_DIR - base directory for logs
+#       REPO_OWNER - GitHub repository owner
+#       GITHUB_TOKEN - GitHub personal access token with repo permissions
+#   - 'jq' command-line JSON processor for GitHub API verification (optional)
+#   - Sufficient permissions for Git operations and internet access for API calls
+#
+# Author:
+#   Karthik KN
+# Date:
+#   [10/17/2025]
+
+
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
 
@@ -13,6 +40,7 @@ GITHUB_TOKEN=""
 GIT_AUTHOR_NAME=""
 GIT_AUTHOR_EMAIL=""
 
+# Load configuration environment variables from $HOME/config.env
 load_config() {
     if [ ! -f "$HOME/config.env" ]; then
         color_red "ERROR: Config file $HOME/config.env missing. Cannot proceed."
@@ -25,20 +53,24 @@ load_config() {
         color_red "ERROR: LOG_BASE_DIR not set in config."
         exit 1
     fi
+
     if [ -z "$REPO_OWNER" ]; then
         color_red "ERROR: REPO_OWNER not set in config."
         exit 1
     fi
+
     if [ -z "$GITHUB_TOKEN" ]; then
         color_red "ERROR: GITHUB_TOKEN not set in config."
         exit 1
     fi
 }
 
+# Color coded output helpers
 color_green() { tput setaf 2; print "$1"; tput sgr0; }
 color_red()   { tput setaf 1; print "$1"; tput sgr0; }
 color_cyan()  { tput setaf 6; print "$1"; tput sgr0; }
 
+# Log message function with timestamp and severity level; supports silent logging
 log_message() {
     level=$1
     shift
@@ -59,6 +91,7 @@ log_message() {
     esac
 }
 
+# Validate that the directory is a Git repository
 check_git_repo() {
     if [ ! -d "$PROJECT_PATH/.git" ]; then
         log_message ERROR "No .git directory in $PROJECT_PATH"
@@ -67,23 +100,24 @@ check_git_repo() {
     fi
 }
 
+# Display current Git status
 print_git_status() {
     color_cyan "---------- GIT STATUS ----------"
     git status
     [ $? -ne 0 ] && { log_message ERROR "git status failed"; color_red "ERROR: git status failed"; exit 1; }
 }
 
+# Interactive selection of files to stage for commit
 select_changes_to_add() {
     typeset -a files_to_add
     cd "$PROJECT_PATH" || { log_message ERROR "Cannot cd $PROJECT_PATH"; return 1; }
-
     print_git_status
 
-    # Show diff preview of unstaged changes
     color_cyan "Preview of Uncommitted Changes (git diff --stat):"
     git diff --stat
 
     git status --porcelain -z > .git_temp_status
+
     if [ ! -s .git_temp_status ]; then
         log_message INFO "No unstaged or untracked changes"
         color_cyan "No changes to commit or push."
@@ -92,7 +126,6 @@ select_changes_to_add() {
     fi
 
     color_cyan "---------- FILES FOR ADD ----------"
-
     exec 3<.git_temp_status
     while IFS= read -r -u 3 -d '' entry; do
         status="${entry:0:2}"
@@ -131,13 +164,12 @@ select_changes_to_add() {
 
     print_git_status
 
-    # Show diff preview of staged changes
     color_cyan "Review STAGED CHANGES to be committed (git diff --cached --stat):"
     git diff --cached --stat
-
     return 0
 }
 
+# Commit staged changes with user-provided or default commit message
 git_commit_changes() {
     color_cyan "Enter commit message:"
     read commit_msg
@@ -148,6 +180,7 @@ git_commit_changes() {
     else
         git commit -m "$commit_msg"
     fi
+
     if [ $? -eq 0 ]; then
         log_message SUCCESS "Commit successful."
         color_green "Commit recorded."
@@ -164,6 +197,7 @@ git_commit_changes() {
     fi
 }
 
+# Push specified or current branch to origin remote
 git_push_changes() {
     if [ -z "$1" ]; then
         color_cyan "Enter branch to push (leave blank for current):"
@@ -172,7 +206,7 @@ git_push_changes() {
         branch_name="$1"
     fi
 
-    [ -z "$branch_name" ] && branch_name=$(git -C "$PROJECT_PATH" symbolic_ref --short HEAD)
+    [ -z "$branch_name" ] && branch_name=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
 
     color_cyan "Available branches:"
     git -C "$PROJECT_PATH" branch
@@ -204,6 +238,7 @@ git_push_changes() {
     fi
 }
 
+# Print commit summary information to the terminal
 print_commit_summary() {
     sha="$1"; author="$2"; msg="$3"; url="$4"
     color_cyan "------ Push Verification Summary ------"
@@ -214,6 +249,7 @@ print_commit_summary() {
     echo "---------------------------------------"
 }
 
+# Verify that latest pushed commit appears on GitHub via its API
 verify_push_on_github() {
     if ! command -v jq >/dev/null 2>&1; then
         color_red "jq not found, skipping verification."
@@ -228,7 +264,6 @@ verify_push_on_github() {
     fi
 
     color_cyan "Verifying latest commit on GitHub..."
-
     repo_name="$PROJECT_NAME"
     github_token="$GITHUB_TOKEN"
     repo_owner="$REPO_OWNER"
@@ -257,6 +292,7 @@ verify_push_on_github() {
     fi
 }
 
+# Generate a changelog of the latest commits to a timestamped file
 generate_changelog() {
     cd "$PROJECT_PATH" || return
     color_cyan "Generating change log for latest commits."
@@ -266,22 +302,27 @@ generate_changelog() {
     color_green "Changelog written to $changelog_file"
 }
 
+# Show recent commit summaries in a formatted table with commit info and files changed
 show_recent_changes() {
     cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
     color_cyan "How many recent commits do you want to see? (default 5):"
     read num_commits
     num_commits=${num_commits:-5}
+
     repo_name=$(basename "$PROJECT_PATH")
     w_project=18; w_commit=20; w_author=14; w_date=10; w_message=34; w_files=100
+
     printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-      "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+    "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+
     printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-      "$(printf '%*s' $w_project | tr ' ' '-')" \
-      "$(printf '%*s' $w_commit | tr ' ' '-')" \
-      "$(printf '%*s' $w_author | tr ' ' '-')" \
-      "$(printf '%*s' $w_date | tr ' ' '-')" \
-      "$(printf '%*s' $w_message | tr ' ' '-')" \
-      "$(printf '%*s' $w_files | tr ' ' '-')"
+    "$(printf '%*s' $w_project | tr ' ' '-')" \
+    "$(printf '%*s' $w_commit | tr ' ' '-')" \
+    "$(printf '%*s' $w_author | tr ' ' '-')" \
+    "$(printf '%*s' $w_date | tr ' ' '-')" \
+    "$(printf '%*s' $w_message | tr ' ' '-')" \
+    "$(printf '%*s' $w_files | tr ' ' '-')" 
+
     git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short |
     while IFS='|' read -r short_sha author date message; do
         files=$(git show --pretty="" --name-only "$short_sha" | paste -sd, -)
@@ -290,13 +331,14 @@ show_recent_changes() {
         t_files=$(echo "$files" | cut -c1-$w_files)
         [ "${#files}" -gt $w_files ] && t_files="$t_files…"
         printf "%-${w_project}s | %-${w_commit}s | %-${w_author}s | %-${w_date}s | %-${w_message}s | %-${w_files}s\n" \
-          "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
+        "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
     done
 }
 
+# Main workflow
 main() {
     if [ "$#" -lt 1 ]; then
-        color_red "Usage: $0 <path_to_project/project_name> [branch]"
+        color_red "Usage: $0 /path/to/git/project [branch]"
         exit 1
     fi
 
@@ -304,13 +346,12 @@ main() {
 
     PROJECT_PATH="$1"
     USER_BRANCH="$2"
-	PROJECT_NAME=$(basename "$PROJECT_PATH")
-	SCRIPT_NAME=$(basename $0)
-	SCRIPT_NAME=${SCRIPT_NAME%.*}
-	
-	LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}/"
-	mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
-	LOG_FILE="${LOG_DIR}/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
+    PROJECT_NAME=$(basename "$PROJECT_PATH")
+    SCRIPT_NAME=$(basename $0)
+    SCRIPT_NAME=${SCRIPT_NAME%.*}
+    LOG_DIR="${LOG_BASE_DIR}/${SCRIPT_NAME}/"
+    mkdir -p "$LOG_DIR" || { color_red "ERROR: Cannot create log directory $LOG_DIR"; exit 1; }
+    LOG_FILE="${LOG_DIR}/${PROJECT_NAME}_$(date +%Y%m%d_%H%M%S).log"
 
     color_cyan "Override git author? (leave blank for default, or format 'Name <email>'):"
     read custom_author
@@ -321,7 +362,6 @@ main() {
     fi
 
     log_message INFO "Starting git check-in for $PROJECT_PATH"
-
     check_git_repo
 
     sel_status=1
@@ -332,6 +372,7 @@ main() {
     if [ $sel_status -eq 0 ]; then
         git_commit_changes
         commit_status=$?
+
         if [ $commit_status -eq 0 ]; then
             print_git_status
             [ -z "$USER_BRANCH" ] && USER_BRANCH=$(git -C "$PROJECT_PATH" symbolic-ref --short HEAD)
@@ -351,4 +392,5 @@ main() {
     log_message SUCCESS "Completed git check-in cycle for $PROJECT_PATH"
 }
 
+# Run the main function
 main "$@"
