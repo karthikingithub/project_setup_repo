@@ -141,7 +141,7 @@ git_commit_changes() {
 
 # --------- Branch Handling and Git Push ---------
 git_push_changes() {
-    local branch_name="$1"
+    branch_name="$1"
 
     color_cyan "---------- AVAILABLE BRANCHES ----------"
     git branch
@@ -199,11 +199,11 @@ verify_push_on_github() {
     color_cyan "Verifying latest commit on GitHub..."
 
     response=$(curl -s -H "Authorization: token $github_token" \
-      "https://api.github.com/repos/$repo_owner/$repo_name/commits/$branch_name")
+      "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
-    sha=$(echo $response | grep -o '"sha":"[^"]*' | head -1 | cut -d'"' -f4)
-    author=$(echo $response | grep -o '"login":"[^"]*' | head -1 | cut -d'"' -f4)
-    msg=$(echo $response | grep -o '"message":"[^"]*' | head -1 | cut -d'"' -f4)
+    sha=$(echo "$response" | grep -o '"sha":"[^"]*' | head -1 | cut -d'"' -f4)
+    author=$(echo "$response" | grep -o '"login":"[^"]*' | head -1 | cut -d'"' -f4)
+    msg=$(echo "$response" | grep -o '"message":"[^"]*' | head -1 | cut -d'"' -f4)
 
     if [ -n "$sha" ]; then
         color_green "Push verified on GitHub!"
@@ -218,6 +218,7 @@ verify_push_on_github() {
         log_message ERROR "GitHub commit verification failed."
     fi
 }
+
 
 # --------- Main Runner ---------
 main() {
