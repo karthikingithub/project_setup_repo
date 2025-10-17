@@ -148,7 +148,11 @@ Contributions, bug reports, and pull requests are welcome.
 
 ---
 
-Maintained by Karthik KN
+
+
+
+
+Maintained by Karthik K.N
 
 ---
 
