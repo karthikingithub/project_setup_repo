@@ -255,36 +255,23 @@ show_recent_changes() {
     color_cyan "How many recent commits do you want to see? (default 5):"
     read num_commits
     num_commits=${num_commits:-5}
-
     repo_name=$(basename "$PROJECT_PATH")
 
-    printf "%-20s | %-8s | %-15s | %-10s | %-40s | %-30s\n" \
+    # Print header
+    printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" \
       "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-    printf "%s\n" "---------------------|----------|-----------------|------------|------------------------------------------|------------------------------"
+    printf "%s\n" "-------------------|----------|---------------|------------|----------------------------------|-------------------------------"
 
-    git log -n "$num_commits" --pretty=format:"%h%x00%an%x00%ad%x00%s" --date=short --name-only -z | \
-    awk -v project="$repo_name" 'BEGIN {
-        FS="\0";
-        OFS=" | ";
-    }
-    {
-        commit=$1;
-        author=$2;
-        date=$3;
-        message=$4;
-        getline filelist;   # filenames (can be empty)
-        # collapse multiple file lines into one, join by comma
-        file_str="";
-        do {
-            if (filelist != "") {
-                if (file_str != "") file_str = file_str ", ";
-                file_str = file_str filelist;
-            }
-        } while (getline filelist > 0 && filelist !~ /^[0-9a-f]{7}$/)
-        # Print actual summary row with padded cells
-        printf "%-20s | %-8s | %-15s | %-10s | %-40s | %-30s\n", \
-            project, commit, author, date, message, file_str;
-    }'
+    git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short | while IFS='|' read -r short_sha author date message; do
+        # Get file list for this commit only
+        files=$(git show --pretty="" --name-only "$short_sha" | paste -sd, -)
+        # Truncate long fields for neat display
+        t_message=$(echo "$message" | cut -c1-34)
+        [ "${#message}" -gt 34 ] && t_message="$t_message…"
+        t_files=$(echo "$files" | cut -c1-30)
+        [ "${#files}" -gt 30 ] && t_files="$t_files…"
+        printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" "$repo_name" "$short_sha" "$author" "$date" "$t_message" "$t_files"
+    done
 }
 
 
