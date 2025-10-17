@@ -212,34 +212,36 @@ verify_push_on_github() {
     github_token="$GITHUB_TOKEN"
 
     if [ -z "$github_token" ]; then
-        color_red "ERROR: GITHUB_TOKEN is not set in environment or config.env. Skipping GitHub verify."
-        log_message ERROR "GITHUB_TOKEN not set. Skipping GitHub verify."
+        echo "ERROR: GITHUB_TOKEN not set, skipping verification."
         return
     fi
 
-    print ""
-    color_cyan "Verifying latest commit on GitHub..."
+    echo "Verifying latest commit on GitHub..."
 
+    # Get API response
     response=$(curl -s -H "Authorization: token $github_token" \
-      "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
+        "https://api.github.com/repos/$repo_owner/$repo_name/branches/$branch_name")
 
+    # Print response to log for debugging
+    echo "$response" >> ${LOG_FILE}
+
+    # Parse commit SHA - improved pattern
     sha=$(echo "$response" | grep -Po '"sha":\s*"\K[0-9a-f]{40}' | head -1)
     msg=$(echo "$response" | grep -Po '"message":\s*"\K[^"]*' | head -1)
     author=$(echo "$response" | grep -Po '"login":\s*"\K[^"]*' | head -1)
 
     if [ -n "$sha" ]; then
-        color_green "Push verified on GitHub!"
-        color_cyan "Latest commit on $repo_name ($branch_name):"
-        print "SHA: $sha"
-        print "Author: $author"
-        print "Message: $msg"
-        print "URL: https://github.com/$repo_owner/$repo_name/commit/$sha"
-        log_message SUCCESS "GitHub verification passed for commit $sha ($msg)"
+        echo "Push verified on GitHub!"
+        echo "Latest commit on $repo_name ($branch_name):"
+        echo "SHA: $sha"
+        echo "Author: $author"
+        echo "Message: $msg"
+        echo "URL: https://github.com/$repo_owner/$repo_name/commit/$sha"
     else
-        color_red "Could not verify push on GitHub. Please check manually."
-        log_message ERROR "GitHub commit verification failed."
+        echo "Could not verify push on GitHub. Please check manually. API response may be invalid."
     fi
 }
+
 
 # --------- Main Runner ---------
 main() {
