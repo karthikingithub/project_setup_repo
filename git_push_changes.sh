@@ -142,7 +142,7 @@ git_commit_changes() {
         color_green "Commit recorded."
         
         # Print git status after commit to show clean working directory
-        print_git_status
+        # print_git_status
         
         return 0
     else
