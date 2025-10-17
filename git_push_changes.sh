@@ -258,9 +258,11 @@ show_recent_changes() {
     repo_name=$(basename "$PROJECT_PATH")
 
     # Print header
-    printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" \
-      "Project" "Commit" "Author" "Date" "Message" "Files Changed"
-    printf "%s\n" "-------------------|----------|---------------|------------|----------------------------------|-------------------------------"
+	printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" \
+	  "Project" "Commit" "Author" "Date" "Message" "Files Changed"
+	printf "%-18s | %-8s | %-14s | %-10s | %-34s | %-30s\n" \
+	  "------------------" "--------" "--------------" "----------" "----------------------------------" "------------------------------"
+
 
     git log -n "$num_commits" --pretty=format:"%h|%an|%ad|%s" --date=short | while IFS='|' read -r short_sha author date message; do
         # Get file list for this commit only
