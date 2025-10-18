@@ -22,19 +22,18 @@
 #   - Python3 and venv module must be installed for virtual environment setup.
 #
 # Author:
-#   [Your Name or Identifier]
+#   Karthik KN
 # Date:
-#   [Date of documentation]
+#   10/18/2025
 
 # Dynamically get the script name (without path and extension) for logs
 SCRIPT_NAME=$(basename $0)
 SCRIPT_NAME=${SCRIPT_NAME%.*}
 
-# Base directory where logs will be stored for this script
-LOG_BASE_DIR="/media/karthik/WD-HDD/Learning/labs/log/${SCRIPT_NAME}"
+PROJECT_PATH=""
+LOG_BASE_DIR=""
+LOG_FILE=""
 
-# Create log dir if missing, exit if fail
-mkdir -p "$LOG_BASE_DIR" || { print "ERROR: Failed to create log directory: $LOG_BASE_DIR"; exit 1; }
 
 # Global variables for project root path and name (set in main)
 PROJECT_PATH=""
@@ -70,6 +69,8 @@ color_cyan() {
 # Arguments:
 #   $1 = Log level (SUCCESS, ERROR, INFO)
 #   $2 = The message string
+
+
 
 log_message() {
   level=$1
