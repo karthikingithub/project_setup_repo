@@ -189,7 +189,7 @@ select_changes_to_add() {
 }
 
 git_commit_changes() {
-  local commit_msg=""
+  typeset commit_msg=""
   while true; do
     color_cyan "Enter commit message (type 'exit' to cancel):"
     read commit_msg
@@ -227,7 +227,7 @@ git_commit_changes() {
 }
 
 git_push_changes() {
-  local branch_name="$1"
+  typeset branch_name="$1"
 
   while true; do
     if [ -z "$branch_name" ]; then
@@ -332,7 +332,7 @@ generate_changelog() {
 
 show_recent_changes() {
   cd "$PROJECT_PATH" || { color_red "Cannot access $PROJECT_PATH"; return 1; }
-  local num_commits=""
+  typeset num_commits=""
   while true; do
     color_cyan "How many recent commits do you want to see? (default 5, 'exit' to cancel):"
     read num_commits
